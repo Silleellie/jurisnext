@@ -8,7 +8,7 @@ import torch
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
-from transformers import T5ForConditionalGeneration, T5TokenizerFast
+from transformers import T5ForConditionalGeneration, T5TokenizerFast, Adafactor
 
 from tqdm import tqdm
 
@@ -181,7 +181,18 @@ if __name__ == "__main__":
     )
 
     model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-small", cache_dir='cache').to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, eps=1e-8)
+    optimizer = Adafactor(
+        list(model.parameters()),
+        lr=1e-3,
+        eps=(1e-30, 1e-3),
+        clip_threshold=1.0,
+        decay_rate=-0.8,
+        beta1=None,
+        weight_decay=0.0,
+        relative_step=False,
+        scale_parameter=False,
+        warmup_init=False
+    )
 
     model.train()
 
