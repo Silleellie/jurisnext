@@ -65,9 +65,9 @@ class CustomData(Dataset):
         # title_sequence = [", ".join(label for label, _ in entry['train_seq']) for entry in batch]
         # text_sequence = [entry['train_seq'][-1][1] for entry in batch]
 
-        prompt = ["Predict the next element in the following sequence:\n" \
-                  f"{entry_sequence}\n\n" \
-                  "Context:\n" \
+        prompt = ["Predict the next element in the following sequence:\n"
+                  f"{entry_sequence}\n\n"
+                  "Context:\n"
                   f"{entry_context}" for entry_sequence, entry_context in zip(title_sequence, text_sequence)]
 
         # TO DO: consider all previous labels and text of the immediate precedent sequence to classify the next label
