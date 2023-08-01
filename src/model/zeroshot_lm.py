@@ -61,10 +61,25 @@ if __name__ == "__main__":
         encoded_sequence["input_sentence"] = tokenizer.batch_decode(encoded_sequence.input_ids)
         return encoded_sequence
 
+
+    def compute_metrics(p: EvalPrediction):
+        metric_acc = load_metric("accuracy")
+        metric_f1 = load_metric("f1")
+        preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
+        preds = np.argmax(preds, axis=1)
+        result = {}
+        result["accuracy"] = metric_acc.compute(predictions=preds, references=p.label_ids)["accuracy"]
+        result["f1"] = metric_f1.compute(predictions=preds, references=p.label_ids, average='macro')["f1"]
+        return result
+
     train = dataset["train"]
+    val = dataset["validation"]
 
     sampled_train = train.map(sample_sequence, remove_columns=train.column_names, load_from_cache_file=False)
     preprocessed_train = sampled_train.map(preprocess, remove_columns=sampled_train.column_names)
+
+    sampled_val = val.map(sample_sequence, remove_columns=val.column_names, load_from_cache_file=False)
+    preprocessed_val = sampled_val.map(preprocess, remove_columns=sampled_val.column_names)
 
     training_args = TrainingArguments(
         output_dir="we",  # Output directory
@@ -83,9 +98,11 @@ if __name__ == "__main__":
     trainer = Trainer(
         model=model,  # The instantiated model to be trained
         args=training_args,  # Training arguments, defined above
-        # compute_metrics=compute_metrics,  # A function to compute the metrics
+        compute_metrics=compute_metrics,  # A function to compute the metrics
         train_dataset=preprocessed_train,  # Training dataset
-        tokenizer=tokenizer  # The tokenizer that was used
+        eval_dataset=preprocessed_val,
+        tokenizer=tokenizer,  # The tokenizer that was used
+        device=0
     )
 
     trainer.train()
