@@ -73,6 +73,7 @@ if __name__ == "__main__":
         per_device_eval_batch_size=1,  # Batch size for evaluation
         warmup_steps=500,  # Number of warmup steps for learning rate scheduler
         weight_decay=0.01,  # Strength of weight decay
+        logging_steps=10
     )
 
     model = BartForSequenceClassification.from_pretrained("facebook/bart-large-mnli",
