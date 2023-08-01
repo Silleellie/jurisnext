@@ -13,8 +13,6 @@ if __name__ == "__main__":
 
     tokenizer = BartTokenizerFast.from_pretrained('facebook/bart-large-mnli')
 
-    d = pd.read_pickle(os.path.join(DATA_DIR, "pre-processed_representations.pkl"))
-
     dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
 
     all_labels = np.unique(np.array([el
