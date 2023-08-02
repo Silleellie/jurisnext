@@ -2,10 +2,12 @@ import itertools
 import os
 import random
 
+import datasets
 import numpy as np
 import pandas as pd
 import torch
 from datasets import load_dataset, load_metric
+from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction, TrainingArguments, \
     BartForSequenceClassification, Trainer, BartTokenizerFast
@@ -52,6 +54,22 @@ def preprocess(sample):
     return encoded_sequence
 
 
+def preprocess_test(sample):
+    text = "\n".join(sample["input_title_sequence"])
+    label = sample["immediate_next_title"]
+
+    wrong_labels = list(all_labels[all_labels != label])
+    random.shuffle(wrong_labels)
+
+    wrong_labels_cut = wrong_labels[:50]
+    candidate_labels = wrong_labels_cut + [label]
+
+    candidate_targets = [template.format(cand_label) for cand_label in candidate_labels]
+
+    encoded_sequence = tokenizer(list(zip(itertools.repeat(text), candidate_targets)), truncation=True)
+    return encoded_sequence
+
+
 def compute_metrics(p: EvalPrediction):
     metric_acc = load_metric("accuracy")
     metric_f1 = load_metric("f1")
@@ -87,56 +105,59 @@ if __name__ == "__main__":
     sampled_val = val.map(sample_sequence, remove_columns=val.column_names, load_from_cache_file=False)
     preprocessed_val = sampled_val.map(preprocess, remove_columns=sampled_val.column_names)
 
-    sampled_test = test.map(sample_sequence, remove_columns=test.column_names, load_from_cache_file=False)
-    preprocessed_test = sampled_test.map(preprocess, remove_columns=sampled_test.column_names)
+    sampled_test: datasets.Dataset = test.map(sample_sequence, remove_columns=test.column_names, load_from_cache_file=False)
+    preprocessed_test = sampled_test.map(preprocess_test)
+    preprocessed_test = preprocessed_test.select_columns(["input_ids", "token_type_ids",
+                                                          "attention_mask", "immediate_next_title"])
+    preprocessed_test.set_format("torch")
 
-    training_args = TrainingArguments(
-        output_dir="we",  # Output directory
-        num_train_epochs=1,  # Total number of training epochs
-        per_device_train_batch_size=4,  # Batch size per device during training
-        per_device_eval_batch_size=4,  # Batch size for evaluation
-        warmup_steps=500,  # Number of warmup steps for learning rate scheduler
-        weight_decay=0.01,  # Strength of weight decay
-        logging_steps=10
-    )
-
-    trainer = Trainer(
-        model=model,  # The instantiated model to be trained
-        args=training_args,  # Training arguments, defined above
-        compute_metrics=compute_metrics,  # A function to compute the metrics
-        train_dataset=preprocessed_train,  # Training dataset
-        eval_dataset=preprocessed_val,
-        tokenizer=tokenizer,  # The tokenizer that was used
-    )
-
-    trainer.train()
-
-    print(trainer.evaluate())
+    # training_args = TrainingArguments(
+    #     output_dir="we",  # Output directory
+    #     num_train_epochs=1,  # Total number of training epochs
+    #     per_device_train_batch_size=4,  # Batch size per device during training
+    #     per_device_eval_batch_size=4,  # Batch size for evaluation
+    #     warmup_steps=500,  # Number of warmup steps for learning rate scheduler
+    #     weight_decay=0.01,  # Strength of weight decay
+    #     logging_steps=10
+    # )
+    #
+    # trainer = Trainer(
+    #     model=model,  # The instantiated model to be trained
+    #     args=training_args,  # Training arguments, defined above
+    #     compute_metrics=compute_metrics,  # A function to compute the metrics
+    #     train_dataset=preprocessed_train,  # Training dataset
+    #     eval_dataset=preprocessed_val,
+    #     tokenizer=tokenizer,  # The tokenizer that was used
+    # )
+    #
+    # trainer.train()
+    #
+    # print(trainer.evaluate())
 
     # model is now the fine tuned one, no need to reload it
-    # model = AutoModelForSequenceClassification.from_pretrained("we/checkpoint-500")
+    model = AutoModelForSequenceClassification.from_pretrained("we/checkpoint-500").to("cuda:0")
+
+    eval_batch_size = 4
+
+    it = preprocessed_test.iter(batch_size=eval_batch_size)
 
     model.eval()
     count_ok = 0
     den = 0
-    for sample in tqdm(sampled_test):
+    for sample in tqdm(it):
 
-        text = "\n".join(sample["input_title_sequence"])
-        label = sample["immediate_next_title"]
+        input_ids = pad_sequence(sample["input_ids"], batch_first=True, padding_value=tokenizer.pad_token_id)
+        token_type_ids = pad_sequence(sample["token_type_ids"], batch_first=True, padding_value=tokenizer.pad_token_id)
+        attention_mask = pad_sequence(sample["attention_mask"], batch_first=True, padding_value=tokenizer.pad_token_id)
 
-        wrong_labels = list(all_labels[all_labels != label])
-        random.shuffle(wrong_labels)
-
-        wrong_labels_cut = wrong_labels[:50]
-        candidate_labels = wrong_labels_cut + [label]
-
-        candidate_targets = [template.format(cand_label) for cand_label in candidate_labels]
-
-        features = tokenizer(list(zip(itertools.repeat(text), candidate_targets)),
-                             padding=True, truncation=True, return_tensors="pt")
+        input_ids.to("cuda:0")
+        token_type_ids.to("cuda:0")
+        attention_mask.to("cuda:0")
 
         with torch.no_grad():
-            scores = model(**features).logits
+            scores = model(input_ids=input_ids,
+                           token_type_ids=token_type_ids,
+                           attention_mask=attention_mask).logits
 
         label_mapping = ['contradiction', 'entailment', 'neutral']
         labels = [label_mapping[score_max] for score_max in scores.argmax(dim=1)]
