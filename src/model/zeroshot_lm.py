@@ -124,9 +124,11 @@ if __name__ == "__main__":
         text = "\n".join(sample["input_title_sequence"])
         label = sample["immediate_next_title"]
 
-        wrong_labels = list(all_labels[all_labels != label])[:20]
+        wrong_labels = list(all_labels[all_labels != label])
         random.shuffle(wrong_labels)
-        candidate_labels = wrong_labels + [label]
+
+        wrong_labels_cut = wrong_labels[:50]
+        candidate_labels = wrong_labels_cut + [label]
 
         candidate_targets = [template.format(cand_label) for cand_label in candidate_labels]
 
