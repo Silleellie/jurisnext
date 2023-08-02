@@ -6,3 +6,5 @@ tqdm~=4.65.0
 numpy~=1.25.1
 -f https://download.pytorch.org/whl/torch_stable.html
 torch~=2.0.1+cu117
+sentencepiece
+protobuf
