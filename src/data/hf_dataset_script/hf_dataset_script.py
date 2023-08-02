@@ -183,6 +183,8 @@ class NewDataset(datasets.GeneratorBasedBuilder):
         validation_set = {case_id: dict_dataset[case_id] for case_id in val_ids}
         test_set = {case_id: dict_dataset[case_id] for case_id in test_ids}
 
+        os.makedirs(SPLITS_DIR, exist_ok=True)
+
         # serialize splits
         train_path = os.path.join(SPLITS_DIR, "train.pkl")
         with open(train_path, "wb") as f:
