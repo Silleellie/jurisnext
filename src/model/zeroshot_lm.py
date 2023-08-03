@@ -1,6 +1,7 @@
 import itertools
 import os
 import random
+from math import ceil
 
 import datasets
 import numpy as np
@@ -10,7 +11,7 @@ from datasets import load_dataset, load_metric
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction, TrainingArguments, \
-    BartForSequenceClassification, Trainer, BartTokenizerFast
+    BartForSequenceClassification, Trainer, BartTokenizerFast, DebertaTokenizer, DebertaForSequenceClassification
 
 from src import ROOT_PATH, DATA_DIR
 
@@ -68,11 +69,10 @@ def preprocess_test(sample, wrong_labels_num):
 
     encoded_sequence = tokenizer(list(zip(itertools.repeat(text), candidate_targets)),
                                  truncation=True,
-                                 padding=True,
-                                 return_tensors='pt')
+                                 padding=True)
 
-    encoded_sequence = dict(zip(encoded_sequence.keys(), map(lambda x: encoded_sequence[x].t(), encoded_sequence)))
-
+    encoded_sequence["processed_labels"] = candidate_labels
+    encoded_sequence["immediate_next_title"] = label
     return encoded_sequence
 
 
@@ -111,11 +111,10 @@ if __name__ == "__main__":
     sampled_val = val.map(sample_sequence, remove_columns=val.column_names, load_from_cache_file=False)
     preprocessed_val = sampled_val.map(preprocess, remove_columns=sampled_val.column_names)
 
-    wrong_labels_num = 500
+    wrong_labels_num = 50
     sampled_test: datasets.Dataset = test.map(sample_sequence, remove_columns=test.column_names, load_from_cache_file=False)
-    preprocessed_test = sampled_test.map(lambda x: preprocess_test(x, wrong_labels_num))
-    preprocessed_test = preprocessed_test.select_columns(["input_ids", "token_type_ids",
-                                                          "attention_mask", "immediate_next_title"])
+    preprocessed_test = sampled_test.map(lambda x: preprocess_test(x, wrong_labels_num),
+                                         remove_columns=sampled_test.column_names, load_from_cache_file=False)
     preprocessed_test.set_format("torch")
 
     # training_args = TrainingArguments(
@@ -141,43 +140,60 @@ if __name__ == "__main__":
     #
     # print(trainer.evaluate())
 
+    print(" Test set evaluation! ".center(80, "*"))
     # model is now the fine tuned one, no need to reload it
     model = AutoModelForSequenceClassification.from_pretrained("we/checkpoint-500").to("cuda:0")
+    entailment_index = model.config.label2id["entailment"]
 
-    eval_batch_size = 4
-
-    it = preprocessed_test.iter(batch_size=eval_batch_size)
+    eval_batch_label_size = 50
 
     model.eval()
     count_ok = 0
     den = 0
-    for sample in tqdm(it):
 
-        input_ids = pad_sequence(sample['input_ids'], batch_first=True, padding_value=tokenizer.pad_token_id)
-        token_type_ids = pad_sequence(sample['token_type_ids'], batch_first=True, padding_value=tokenizer.pad_token_id)
-        attention_mask = pad_sequence(sample['attention_mask'], batch_first=True, padding_value=tokenizer.pad_token_id)
+    pbar = tqdm(preprocessed_test)
+    for i, sample in enumerate(pbar):
 
-        input_ids = torch.transpose(input_ids, 1, 2)
-        token_type_ids = torch.transpose(token_type_ids, 1, 2)
-        attention_mask = torch.transpose(attention_mask, 1, 2)
+        current_label = None
+        current_max_logit = -1
 
-        input_ids = input_ids.to("cuda:0")
-        token_type_ids = token_type_ids.to("cuda:0")
-        attention_mask = attention_mask.to("cuda:0")
+        # ceil because we don't want to drop the last batch
+        for i in range(ceil(sample["input_ids"].size(0) / eval_batch_label_size)):
+            input_ids = sample["input_ids"][i * eval_batch_label_size:(i+1)*eval_batch_label_size]
+            token_type_ids = sample["token_type_ids"][i * eval_batch_label_size:(i+1)*eval_batch_label_size]
+            attention_mask = sample["attention_mask"][i * eval_batch_label_size:(i + 1) * eval_batch_label_size]
 
-        with torch.no_grad():
-            scores = model(input_ids=input_ids,
-                           token_type_ids=token_type_ids,
-                           attention_mask=attention_mask).logits
+            processed_labels = sample["processed_labels"][i * eval_batch_label_size:(i + 1) * eval_batch_label_size]
 
-        label_mapping = ['contradiction', 'entailment', 'neutral']
-        labels = [label_mapping[score_max] for score_max in scores.argmax(dim=1)]
+            input_ids = input_ids.to("cuda:0")
+            token_type_ids = token_type_ids.to("cuda:0")
+            attention_mask = attention_mask.to("cuda:0")
 
-        if labels[-1] == "entailment":
+            with torch.no_grad():
+                scores = model(input_ids=input_ids,
+                               token_type_ids=token_type_ids,
+                               attention_mask=attention_mask).logits
+
+            # here this is a STRICT prediction: we check that the label predicted is the one
+            # with the greatest logit
+            index_max_entailment = scores[:, entailment_index].argmax().item()
+            max_entailment_logit = scores[index_max_entailment, entailment_index]
+
+            if max_entailment_logit > current_max_logit:
+                current_label = processed_labels[index_max_entailment]
+                current_max_logit = max_entailment_logit
+
+        if current_label == sample["immediate_next_title"]:
             count_ok += 1
 
         den += 1
 
+        if i % 30:
+            pbar.set_description(f"acc: {(count_ok / den):.4f}")
+
+    pbar.close()
+
     acc = count_ok / den
 
+    print("Accuracy:")
     print(acc)
