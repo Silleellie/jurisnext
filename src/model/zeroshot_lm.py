@@ -54,19 +54,25 @@ def preprocess(sample):
     return encoded_sequence
 
 
-def preprocess_test(sample):
+def preprocess_test(sample, wrong_labels_num):
     text = "\n".join(sample["input_title_sequence"])
     label = sample["immediate_next_title"]
 
     wrong_labels = list(all_labels[all_labels != label])
     random.shuffle(wrong_labels)
 
-    wrong_labels_cut = wrong_labels[:50]
+    wrong_labels_cut = wrong_labels[:wrong_labels_num]
     candidate_labels = wrong_labels_cut + [label]
 
     candidate_targets = [template.format(cand_label) for cand_label in candidate_labels]
 
-    encoded_sequence = tokenizer(list(zip(itertools.repeat(text), candidate_targets)), truncation=True)
+    encoded_sequence = tokenizer(list(zip(itertools.repeat(text), candidate_targets)),
+                                 truncation=True,
+                                 padding=True,
+                                 return_tensors='pt')
+
+    encoded_sequence = dict(zip(encoded_sequence.keys(), map(lambda x: encoded_sequence[x].t(), encoded_sequence)))
+
     return encoded_sequence
 
 
@@ -105,8 +111,9 @@ if __name__ == "__main__":
     sampled_val = val.map(sample_sequence, remove_columns=val.column_names, load_from_cache_file=False)
     preprocessed_val = sampled_val.map(preprocess, remove_columns=sampled_val.column_names)
 
+    wrong_labels_num = 500
     sampled_test: datasets.Dataset = test.map(sample_sequence, remove_columns=test.column_names, load_from_cache_file=False)
-    preprocessed_test = sampled_test.map(preprocess_test)
+    preprocessed_test = sampled_test.map(lambda x: preprocess_test(x, wrong_labels_num))
     preprocessed_test = preprocessed_test.select_columns(["input_ids", "token_type_ids",
                                                           "attention_mask", "immediate_next_title"])
     preprocessed_test.set_format("torch")
@@ -146,13 +153,17 @@ if __name__ == "__main__":
     den = 0
     for sample in tqdm(it):
 
-        input_ids = pad_sequence(sample["input_ids"], batch_first=True, padding_value=tokenizer.pad_token_id)
-        token_type_ids = pad_sequence(sample["token_type_ids"], batch_first=True, padding_value=tokenizer.pad_token_id)
-        attention_mask = pad_sequence(sample["attention_mask"], batch_first=True, padding_value=tokenizer.pad_token_id)
+        input_ids = pad_sequence(sample['input_ids'], batch_first=True, padding_value=tokenizer.pad_token_id)
+        token_type_ids = pad_sequence(sample['token_type_ids'], batch_first=True, padding_value=tokenizer.pad_token_id)
+        attention_mask = pad_sequence(sample['attention_mask'], batch_first=True, padding_value=tokenizer.pad_token_id)
 
-        input_ids.to("cuda:0")
-        token_type_ids.to("cuda:0")
-        attention_mask.to("cuda:0")
+        input_ids = torch.transpose(input_ids, 1, 2)
+        token_type_ids = torch.transpose(token_type_ids, 1, 2)
+        attention_mask = torch.transpose(attention_mask, 1, 2)
+
+        input_ids = input_ids.to("cuda:0")
+        token_type_ids = token_type_ids.to("cuda:0")
+        attention_mask = attention_mask.to("cuda:0")
 
         with torch.no_grad():
             scores = model(input_ids=input_ids,
