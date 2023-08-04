@@ -188,7 +188,7 @@ class LMTrainer:
             mapped_predictions = self.all_labels[sim.cpu().argmax(axis=1)]
 
             matches += sum(
-                [truth in mapped_predictions[i * self.num_return_sequences:(j + 1) * self.num_return_sequences]
+                [truth in mapped_predictions[j * self.num_return_sequences:(j + 1) * self.num_return_sequences]
                  for j, truth in enumerate(target_text)])
 
             # we update the loss every 1% progress considering the total n° of batches
