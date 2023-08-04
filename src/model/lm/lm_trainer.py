@@ -185,7 +185,7 @@ class LMTrainer:
             encoded_preds = self.sim_model.encode(generated_sents, convert_to_tensor=True)
 
             sim = util.cos_sim(encoded_preds, self.encoded_labels)
-            mapped_predictions = self.all_labels[sim.argmax(axis=1)]
+            mapped_predictions = self.all_labels[sim.cpu().argmax(axis=1)]
 
             matches += sum(
                 [truth in mapped_predictions[i * self.num_return_sequences:(j + 1) * self.num_return_sequences]
