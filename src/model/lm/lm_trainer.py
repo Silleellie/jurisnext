@@ -87,8 +87,8 @@ class LMTrainer:
                 self.model.optimizer.step()
 
                 # we update the loss every 1% progress considering the total n° of batches
-                if (i % (total_n_batch // 100)) == 0:
-                    pbar.set_description(f"Epoch {epoch}, Loss -> {train_loss / (i + 1)}")
+                if (i % ceil(total_n_batch / 100)) == 0:
+                    pbar.set_description(f"Epoch {epoch}, Loss -> {(train_loss / (i + 1)):.6f}")
 
             pbar.close()
 
@@ -141,8 +141,8 @@ class LMTrainer:
                  for j, truth in enumerate(target_text)])
 
             # we update the loss every 1% progress considering the total n° of batches
-            if (i % (total_n_batch // 100)) == 0:
-                pbar_val.set_description(f"Val Loss -> {(matches / (i * len(batch))):.4f}")
+            if (i % ceil(total_n_batch / 100)) == 0:
+                pbar_val.set_description(f"Val Loss -> {(matches / (i * len(batch))):.6f}")
 
         print(matches / preprocessed_validation.num_rows)
 
@@ -192,8 +192,8 @@ class LMTrainer:
                  for j, truth in enumerate(target_text)])
 
             # we update the loss every 1% progress considering the total n° of batches
-            if (i % (total_n_batch // 100)) == 0:
-                pbar_test.set_description(f"Acc -> {(matches / (i * len(batch))):.4f}")
+            if (i % ceil(total_n_batch / 100)) == 0:
+                pbar_test.set_description(f"Acc -> {(matches / (i * len(batch))):.6f}")
 
         print(matches / preprocessed_test.num_rows)
 
