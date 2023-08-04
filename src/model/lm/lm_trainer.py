@@ -193,7 +193,7 @@ class LMTrainer:
 
             # we update the loss every 1% progress considering the total n° of batches
             if (i % ceil(total_n_batch / 100)) == 0:
-                pbar_test.set_description(f"Acc -> {(matches / (i * len(batch))):.6f}")
+                pbar_test.set_description(f"Acc -> {(matches / (i * self.eval_batch_size)):.6f}")
 
         print(matches / preprocessed_test.num_rows)
 
