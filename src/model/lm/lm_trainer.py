@@ -10,7 +10,7 @@ from sentence_transformers import util, SentenceTransformer
 
 from tqdm import tqdm
 
-from src import RANDOM_STATE, ROOT_PATH
+from src import RANDOM_STATE, ROOT_PATH, MODELS_DIR
 from src.data.dataset_map_fn import sample_sequence
 from src.model.lm.t5.flan_t5 import FineTunedFlanT5
 from src.utils import seed_everything
@@ -127,7 +127,7 @@ class LMTrainer:
                 )
                 generated_sents = self.model.tokenizer.batch_decode(beam_outputs, skip_special_tokens=True)
 
-            # match with actual labels by taking the most similiar to the label generated
+            # match with actual labels by taking the most similar to the label generated
             # by the language model
             encoded_preds = self.sim_model.encode(generated_sents, convert_to_tensor=True)
 
@@ -230,3 +230,9 @@ if __name__ == "__main__":
     trainer.train(train, val)
 
     trainer.evaluate(test)
+
+    # save model via hf library
+    output_name = f"{model.config.name_or_path}_{n_epochs}"
+    output_dir = os.path.join(MODELS_DIR, output_name)
+
+    model.save_pretrained(output_dir)
