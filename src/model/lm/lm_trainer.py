@@ -202,6 +202,10 @@ if __name__ == "__main__":
     seed_everything(RANDOM_STATE)
 
     # PARAMETERS
+    n_epochs = 1
+    batch_size = 4
+    eval_batch_size = 2
+
     dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
 
     all_labels = np.unique(np.array([el
@@ -216,11 +220,11 @@ if __name__ == "__main__":
     model = FineTunedFlanT5.from_pretrained("google/flan-t5-small", all_labels=all_labels).to("cuda:0")
 
     trainer = LMTrainer(
-        n_epochs=1,
-        batch_size=4,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
         model=model,
         all_labels=all_labels,
-        eval_batch_size=2
+        eval_batch_size=eval_batch_size
     )
 
     trainer.train(train, val)

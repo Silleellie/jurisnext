@@ -175,6 +175,10 @@ if __name__ == "__main__":
     seed_everything(RANDOM_STATE)
 
     # PARAMETERS
+    n_epochs = 100
+    batch_size = 2
+    eval_batch_size = 2
+
     dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
 
     all_labels_occurrences = np.array([el
@@ -202,10 +206,10 @@ if __name__ == "__main__":
 
     trainer = BertTrainer(
         model=model,
-        n_epochs=100,
-        batch_size=2,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
         all_labels=all_unique_labels,
-        eval_batch_size=2
+        eval_batch_size=eval_batch_size
     )
 
     trainer.train(train, val)
