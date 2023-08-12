@@ -5,15 +5,12 @@ from math import ceil
 
 import datasets
 import numpy as np
-import pandas as pd
 import torch
 from datasets import load_dataset, load_metric
-from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction, TrainingArguments, \
-    BartForSequenceClassification, Trainer, BartTokenizerFast, DebertaTokenizer, DebertaForSequenceClassification
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction
 
-from src import ROOT_PATH, DATA_DIR
+from src import ROOT_PATH
 
 
 def sample_sequence(batch):
@@ -89,9 +86,6 @@ def compute_metrics(p: EvalPrediction):
 
 if __name__ == "__main__":
 
-    tokenizer = AutoTokenizer.from_pretrained("cross-encoder/nli-deberta-v3-xsmall")
-    model = AutoModelForSequenceClassification.from_pretrained("cross-encoder/nli-deberta-v3-xsmall")
-
     dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
 
     all_labels = np.unique(np.array([el
@@ -105,21 +99,18 @@ if __name__ == "__main__":
     val = dataset["validation"]
     test = dataset["test"]
 
-    sampled_train = train.map(sample_sequence, remove_columns=train.column_names, load_from_cache_file=False)
-    preprocessed_train = sampled_train.map(preprocess, remove_columns=sampled_train.column_names)
+    # sampled_train = train.map(sample_sequence, remove_columns=train.column_names, load_from_cache_file=False)
+    # preprocessed_train = sampled_train.map(preprocess, remove_columns=sampled_train.column_names)
+    #
+    # sampled_val = val.map(sample_sequence, remove_columns=val.column_names, load_from_cache_file=False)
+    # preprocessed_val = sampled_val.map(preprocess, remove_columns=sampled_val.column_names)
 
-    sampled_val = val.map(sample_sequence, remove_columns=val.column_names, load_from_cache_file=False)
-    preprocessed_val = sampled_val.map(preprocess, remove_columns=sampled_val.column_names)
-
-    wrong_labels_num = 50
-    sampled_test: datasets.Dataset = test.map(sample_sequence, remove_columns=test.column_names, load_from_cache_file=False)
-    preprocessed_test = sampled_test.map(lambda x: preprocess_test(x, wrong_labels_num),
-                                         remove_columns=sampled_test.column_names, load_from_cache_file=False)
-    preprocessed_test.set_format("torch")
-
+    # tokenizer = AutoTokenizer.from_pretrained("cross-encoder/nli-deberta-v3-xsmall")
+    # model = AutoModelForSequenceClassification.from_pretrained("cross-encoder/nli-deberta-v3-xsmall")
+    #
     # training_args = TrainingArguments(
     #     output_dir="we",  # Output directory
-    #     num_train_epochs=1,  # Total number of training epochs
+    #     num_train_epochs=2,  # Total number of training epochs
     #     per_device_train_batch_size=4,  # Batch size per device during training
     #     per_device_eval_batch_size=4,  # Batch size for evaluation
     #     warmup_steps=500,  # Number of warmup steps for learning rate scheduler
@@ -141,9 +132,18 @@ if __name__ == "__main__":
     # print(trainer.evaluate())
 
     print(" Test set evaluation! ".center(80, "*"))
-    # model is now the fine tuned one, no need to reload it
-    model = AutoModelForSequenceClassification.from_pretrained("we/checkpoint-500").to("cuda:0")
+
+    model = AutoModelForSequenceClassification.from_pretrained("we/checkpoint-1500").to("cuda:0")
+    tokenizer = AutoTokenizer.from_pretrained("we/checkpoint-1500")
     entailment_index = model.config.label2id["entailment"]
+    contradiction_index = model.config.label2id["contradiction"]
+    neutral_index = model.config.label2id["neutral"]
+
+    wrong_labels_num = 100
+    sampled_test: datasets.Dataset = test.map(sample_sequence, remove_columns=test.column_names, load_from_cache_file=False)
+    preprocessed_test = sampled_test.map(lambda x: preprocess_test(x, wrong_labels_num),
+                                         remove_columns=sampled_test.column_names, load_from_cache_file=False)
+    preprocessed_test.set_format("torch")
 
     eval_batch_label_size = 50
 
@@ -151,16 +151,20 @@ if __name__ == "__main__":
     count_ok = 0
     den = 0
 
+    matches_optimistic = 0
     pbar = tqdm(preprocessed_test)
     for i, sample in enumerate(pbar):
 
         current_label = None
-        current_max_logit = -1
+        current_pred_entailment_logit = -1
+        current_pred_contradiction_logit = -1
+        current_pred_neutral_logit = -1
 
         # ceil because we don't want to drop the last batch
         for i in range(ceil(sample["input_ids"].size(0) / eval_batch_label_size)):
-            input_ids = sample["input_ids"][i * eval_batch_label_size:(i+1)*eval_batch_label_size]
-            token_type_ids = sample["token_type_ids"][i * eval_batch_label_size:(i+1)*eval_batch_label_size]
+
+            input_ids = sample["input_ids"][i * eval_batch_label_size:(i + 1) * eval_batch_label_size]
+            token_type_ids = sample["token_type_ids"][i * eval_batch_label_size:(i + 1) * eval_batch_label_size]
             attention_mask = sample["attention_mask"][i * eval_batch_label_size:(i + 1) * eval_batch_label_size]
 
             processed_labels = sample["processed_labels"][i * eval_batch_label_size:(i + 1) * eval_batch_label_size]
@@ -174,14 +178,23 @@ if __name__ == "__main__":
                                token_type_ids=token_type_ids,
                                attention_mask=attention_mask).logits
 
-            # here this is a STRICT prediction: we check that the label predicted is the one
-            # with the greatest logit
+            # maybe something can be done with neutral and contradiction logits to improve the prediction phase
             index_max_entailment = scores[:, entailment_index].argmax().item()
-            max_entailment_logit = scores[index_max_entailment, entailment_index]
+            entailment_logit = scores[index_max_entailment, entailment_index]
+            contradiction_logit = scores[index_max_entailment, contradiction_index]
+            neutral_logit = scores[index_max_entailment, neutral_index]
 
-            if max_entailment_logit > current_max_logit:
+            if entailment_logit > current_pred_entailment_logit:
                 current_label = processed_labels[index_max_entailment]
-                current_max_logit = max_entailment_logit
+                current_pred_entailment_logit = entailment_logit
+                current_pred_neutral_logit = neutral_logit
+                current_pred_contradiction_logit = contradiction_logit
+
+            if scores.size(0) == 1 and scores[0].argmax().item() == entailment_index:
+                matches_optimistic += 1
+            # index_ground_truth = sample["processed_labels"].index(sample["immediate_next_title"])
+            # if scores[index_ground_truth].argmax().item() == entailment_index:
+            #     matches_optimistic += 1
 
         if current_label == sample["immediate_next_title"]:
             count_ok += 1
@@ -194,6 +207,10 @@ if __name__ == "__main__":
     pbar.close()
 
     acc = count_ok / den
+    acc_optimistic = matches_optimistic / den
 
     print("Accuracy:")
     print(acc)
+
+    print("Accuracy optimistic:")
+    print(acc_optimistic)
