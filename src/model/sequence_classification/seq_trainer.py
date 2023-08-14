@@ -15,9 +15,10 @@ from src.model.sequence_classification.bert.bert import FineTunedBert
 from src.utils import seed_everything
 
 
-class BertTrainer:
+class SeqTrainer:
 
-    def __init__(self, n_epochs, batch_size,
+    def __init__(self,
+                 n_epochs, batch_size,
                  model,
                  all_labels: np.ndarray,
                  device='cuda:0',
@@ -212,7 +213,7 @@ if __name__ == "__main__":
     val = dataset["validation"]
     test = dataset["test"]
 
-    trainer = BertTrainer(
+    trainer = SeqTrainer(
         model=model,
         n_epochs=n_epochs,
         batch_size=batch_size,
