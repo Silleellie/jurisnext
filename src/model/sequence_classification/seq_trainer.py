@@ -21,7 +21,9 @@ class BertTrainer:
                  model,
                  all_labels: np.ndarray,
                  device='cuda:0',
-                 eval_batch_size=None, num_workers=4):
+                 eval_batch_size=None,
+                 num_workers=4,
+                 output_name=None):
 
         self.model = model
         self.n_epochs = n_epochs
@@ -30,6 +32,12 @@ class BertTrainer:
         self.eval_batch_size = eval_batch_size if eval_batch_size is not None else batch_size
         self.num_workers = num_workers
         self.device = device
+
+        # output name
+        if output_name is None:
+            output_name = f"{model.config.name_or_path}_{n_epochs}" if output_name is None else output_name
+
+        self.output_path = os.path.join(MODELS_DIR, output_name)
 
     def train(self, train_dataset: datasets.Dataset, validation_dataset: datasets.Dataset = None):
 
@@ -56,7 +64,7 @@ class BertTrainer:
             # if no significant change happens to the loss after 10 epochs then early stopping
             if no_change_counter == 10:
                 print("Early stopping")
-                self.model.load_state_dict(torch.load('bert_finetuned.pt'))
+                self.model.save_pretrained(self.output_path)
                 break
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
@@ -102,7 +110,7 @@ class BertTrainer:
 
                     min_val_loss = val_loss
                     no_change_counter = 0
-                    torch.save(self.model.state_dict(), 'bert_finetuned.pt')
+                    self.model.save_pretrained(self.output_path)
 
                 else:
 
@@ -214,6 +222,10 @@ if __name__ == "__main__":
 
     trainer.train(train, val)
 
-    trainer.model.load_state_dict(torch.load('bert_finetuned.pt'))
+    trainer.model = FineTunedNliDeberta.from_pretrained(trainer.output_path,
+
+                                                        all_unique_labels=all_unique_labels,
+                                                        labels_weights=labels_weights,
+                                                        tokenizer=tokenizer)
 
     trainer.evaluate(test)
