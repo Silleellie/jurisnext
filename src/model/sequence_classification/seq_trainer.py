@@ -48,7 +48,9 @@ class SeqTrainer:
         sampled_val = validation_dataset.map(sample_sequence,
                                              remove_columns=validation_dataset.column_names,
                                              load_from_cache_file=False)
-        preprocessed_val = sampled_val.map(self.model.tokenize, remove_columns=sampled_val.column_names)
+        preprocessed_val = sampled_val.map(self.model.tokenize,
+                                           remove_columns=sampled_val.column_names,
+                                           load_from_cache_file=False)
         preprocessed_val.set_format("torch")
         self.model.train()
 
