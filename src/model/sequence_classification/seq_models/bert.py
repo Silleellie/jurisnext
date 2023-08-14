@@ -3,15 +3,21 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertTokenizerFast, BertForSequenceClassification
 
+from src.model.sequence_classification.seq_models_interface import SeqClassification
 
-class FineTunedBert(BertForSequenceClassification):
 
-    def __init__(self, config, labels_weights: np.ndarray):
+# maybe consider composition rather than multiple inheritance
+class FineTunedBert(BertForSequenceClassification, SeqClassification):
 
-        super().__init__(config)
+    def __init__(self, config, labels_weights: np.ndarray, tokenizer):
 
-        self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
-        self.optimizer = torch.optim.AdamW(list(self.parameters()), lr=2e-5)
+        BertForSequenceClassification.__init__(self, config)
+
+        SeqClassification.__init__(
+            self,
+            tokenizer=tokenizer,
+            optimizer=torch.optim.AdamW(list(self.parameters()), lr=2e-5)
+        )
 
         self.labels_weights = torch.from_numpy(labels_weights).to(torch.float32)
 
