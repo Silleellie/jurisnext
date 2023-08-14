@@ -3,15 +3,16 @@ from math import ceil
 
 import datasets
 import numpy as np
-import torch
 from datasets import load_dataset
 from sklearn.utils import compute_class_weight
 
 from tqdm import tqdm
+from transformers import AutoTokenizer
 
-from src import RANDOM_STATE, ROOT_PATH
+from src import RANDOM_STATE, ROOT_PATH, MODELS_DIR
 from src.data.dataset_map_fn import sample_sequence
-from src.model.sequence_classification.bert.bert import FineTunedBert
+from src.model.sequence_classification.seq_models.bert import FineTunedBert
+from src.model.sequence_classification.seq_models.nli_deberta import FineTunedNliDeberta
 from src.utils import seed_everything
 
 
@@ -186,9 +187,10 @@ if __name__ == "__main__":
     seed_everything(RANDOM_STATE)
 
     # PARAMETERS
-    n_epochs = 100
+    n_epochs = 2
     batch_size = 2
     eval_batch_size = 2
+    tokenizer_name = "cross-encoder/nli-deberta-v3-xsmall"
 
     dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
 
@@ -201,15 +203,27 @@ if __name__ == "__main__":
 
     labels_weights = compute_class_weight(class_weight='balanced', classes=all_unique_labels, y=all_labels_occurrences)
 
-    model = FineTunedBert.from_pretrained('bert-base-uncased',
-                                          problem_type="single_label_classification",
-                                          num_labels=len(all_unique_labels),
-                                          id2label={idx: label for idx, label in
-                                                    enumerate(all_unique_labels)},
-                                          label2id={label: idx for idx, label in
-                                                    enumerate(all_unique_labels)},
-                                          labels_weights=labels_weights
-                                          ).to('cuda:0')
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+
+    # model = FineTunedBert.from_pretrained(
+    #     'bert-base-uncased',
+    #     problem_type="single_label_classification",
+    #     num_labels=len(all_unique_labels),
+    #     id2label={idx: label for idx, label in
+    #               enumerate(all_unique_labels)},
+    #     label2id={label: idx for idx, label in
+    #               enumerate(all_unique_labels)},
+    #     labels_weights=labels_weights,
+    #     tokenizer=tokenizer
+    # ).to('cuda:0')
+
+    model = FineTunedNliDeberta.from_pretrained(
+        "cross-encoder/nli-deberta-v3-xsmall",
+
+        all_unique_labels=all_unique_labels,
+        labels_weights=labels_weights,
+        tokenizer=tokenizer
+    ).to('cuda:0')
 
     train = dataset["train"]
     val = dataset["validation"]
