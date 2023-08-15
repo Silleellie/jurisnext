@@ -10,9 +10,11 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from src import RANDOM_STATE, ROOT_PATH, MODELS_DIR
+from src.data.clustering import KMeansLearner
 from src.data.dataset_map_fn import sample_sequence
 from src.model.sequence_classification.seq_models.bert import FineTunedBert
 from src.model.sequence_classification.seq_models.nli_deberta import FineTunedNliDeberta
+from src.sentence_encoders import SbertSentenceEncoder
 from src.utils import seed_everything
 
 
@@ -53,7 +55,6 @@ class SeqTrainer:
                                            remove_columns=sampled_val.column_names,
                                            load_from_cache_file=False)
         preprocessed_val.set_format("torch")
-        self.model.train()
 
         # ceil because we don't drop the last batch
         total_n_batch = ceil(train_dataset.num_rows / self.batch_size)
@@ -64,6 +65,8 @@ class SeqTrainer:
         min_delta = 1e-4
 
         for epoch in range(0, self.n_epochs):
+
+            self.model.train()
 
             # if no significant change happens to the loss after 10 epochs then early stopping
             if no_change_counter == 10:
@@ -86,7 +89,7 @@ class SeqTrainer:
                         total=total_n_batch)
 
             train_loss = 0
-            self.model.train()
+
             for i, batch in enumerate(pbar, start=1):
 
                 self.model.optimizer.zero_grad()
@@ -187,9 +190,9 @@ if __name__ == "__main__":
     seed_everything(RANDOM_STATE)
 
     # PARAMETERS
-    n_epochs = 2
+    n_epochs = 10
     batch_size = 2
-    eval_batch_size = 2
+    eval_batch_size = 1
     tokenizer_name = "cross-encoder/nli-deberta-v3-xsmall"
 
     dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
@@ -201,10 +204,10 @@ if __name__ == "__main__":
 
     all_unique_labels = np.unique(all_labels_occurrences)
 
-    labels_weights = compute_class_weight(class_weight='balanced', classes=all_unique_labels, y=all_labels_occurrences)
-
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
+    # labels_weights = compute_class_weight(class_weight='balanced', classes=all_unique_labels, y=all_labels_occurrences)
+    #
     # model = FineTunedBert.from_pretrained(
     #     'bert-base-uncased',
     #     problem_type="single_label_classification",
@@ -217,12 +220,19 @@ if __name__ == "__main__":
     #     tokenizer=tokenizer
     # ).to('cuda:0')
 
+    train_labels_occurrences = np.array([el
+                                         for element in dataset["train"]
+                                         for el in element["title_sequence"]])
+
+    kmeans = KMeansLearner(train_labels_occurrences, SbertSentenceEncoder())
+    sentence_mapping, sentence_cluster_to_others = kmeans.get_sentence_mapping(all_unique_labels)
+
     model = FineTunedNliDeberta.from_pretrained(
         "cross-encoder/nli-deberta-v3-xsmall",
-
         all_unique_labels=all_unique_labels,
-        labels_weights=labels_weights,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        title_to_cluster_title=sentence_mapping,
+        cluster_title_to_possible_titles=sentence_cluster_to_others
     ).to('cuda:0')
 
     train = dataset["train"]
@@ -240,9 +250,9 @@ if __name__ == "__main__":
     trainer.train(train, val)
 
     trainer.model = FineTunedNliDeberta.from_pretrained(trainer.output_path,
-
                                                         all_unique_labels=all_unique_labels,
-                                                        labels_weights=labels_weights,
-                                                        tokenizer=tokenizer)
+                                                        tokenizer=tokenizer,
+                                                        title_to_cluster_title=sentence_mapping,
+                                                        cluster_title_to_possible_titles=sentence_cluster_to_others)
 
     trainer.evaluate(test)
