@@ -53,7 +53,7 @@ class KMeansLearner(ClusterLearner):
 
         for i, center in enumerate(km.cluster_centers_):
 
-            most_sim_idx = util.cos_sim(center, embeddings).argmax(1)
+            most_sim_idx = util.cos_sim(center, embeddings).argmax(1)[0].item()
             self.cluster_idx_to_sentence[i] = sentences[most_sim_idx]
 
         return km
