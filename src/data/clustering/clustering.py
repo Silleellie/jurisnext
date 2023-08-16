@@ -114,3 +114,25 @@ class KMedoidsLearner(ClusterLearner):
             sentence_cluster_to_others[predict].append(sentences[i])
 
         return to_sentence, sentence_cluster_to_others
+
+
+if __name__ == "__main__":
+
+    import pickle
+    import pandas as pd
+    import os
+
+    from src import RAW_DATA_DIR, PROCESSED_DATA_DIR
+    from src.sentence_encoders import SbertSentenceEncoder
+
+    with open(os.path.join(RAW_DATA_DIR, "pre-processed_representations.pkl"), "rb") as f:
+        data: pd.DataFrame = pickle.load(f)
+
+    all_labels = data['concept:name']
+    all_unique_labels = pd.unique(data['concept:name'])
+
+    kmeans = KMeansLearner(all_labels, SbertSentenceEncoder())
+    sentence_mapping, sentence_cluster_to_others = kmeans.get_sentence_mapping(all_unique_labels)
+    data = data.replace({'concept:name': sentence_mapping})
+
+    data.to_csv(os.path.join(PROCESSED_DATA_DIR, 'clustered_dataset.csv'))
