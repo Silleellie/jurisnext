@@ -1,55 +1,79 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, Literal
+from math import ceil
+from typing import Literal, List
 
+import datasets
 import torch
 import numpy as np
 
 from sentence_transformers import SentenceTransformer
+from tqdm import tqdm
 from transformers import BertModel, BertTokenizerFast
 
 
 class SentenceEncoder(ABC):
 
+    def __init__(self, batch_size: int = 64):
+        self.batch_size = batch_size
+
     @abstractmethod
-    def __call__(self, *sentences: Tuple[str]) -> np.ndarray:
+    def encode_batch(self, batch_sentences: List[str]):
         raise NotImplementedError
+
+    def __call__(self, *sentences: str) -> np.ndarray:
+        outputs = []
+
+        dataset = datasets.Dataset.from_dict({"sentences": sentences})
+
+        pbar = tqdm(dataset.iter(batch_size=self.batch_size),
+                    desc="Encoding labels for clustering...",
+                    total=ceil(dataset.num_rows / self.batch_size))
+
+        for sample in pbar:
+            batch_sentences = sample["sentences"]
+
+            encoded_batch = self.encode_batch(batch_sentences)
+            outputs.append(encoded_batch)
+
+        pbar.close()
+
+        return torch.vstack(outputs).numpy()
 
 
 class SentenceTransformerEncoder(SentenceEncoder):
 
-    def __init__(self, model_name='all-MiniLM-L6-v2', model_kwargs=None):
+    def __init__(self, model_name='all-MiniLM-L6-v2', batch_size=128, model_kwargs=None):
+
+        super().__init__(batch_size=batch_size)
 
         if model_kwargs is None:
             model_kwargs = {}
 
         self.model = SentenceTransformer(model_name, **model_kwargs)
 
-    def __call__(self, *sentences: Tuple[str]):
-        return self.model.encode(*sentences)
+    def encode_batch(self, batch_sentences: List[str]):
+        return self.model.encode(batch_sentences, batch_size=self.batch_size)
 
 
 class BertSentenceEncoder(SentenceEncoder):
 
     def __init__(self, model_name='bert-base-uncased',
+                 batch_size=128,
                  hidden_states_num=4,
                  hidden_states_fusion_strat: Literal["sum", "concat"] = "sum",
                  token_fusion_strat: Literal["sum", "mean"] = "sum",
                  model_kwargs=None):
 
+        super().__init__(batch_size=batch_size)
+
         if model_kwargs is None:
             model_kwargs = {}
 
-        # keepdim to avoid implicit squeeze when one dim becomes 1
-        sum_fusion = lambda x, y: torch.sum(x, dim=y, keepdim=True)
-        concat_fusion = lambda x, y: torch.cat(x, dim=y)
-        mean_fusion = lambda x, y: torch.mean(x, dim=y, keepdim=True)
+        hidden_states_available_fusions = {"sum": self._fuse_hidden_states_sum,
+                                           "concat": self._fuse_hidden_states_concat}
 
-        # fusing hidden states involves manipulating dim 0 of the stacked tensor
-        hidden_states_available_fusions = {"sum": lambda x: sum_fusion(x, 0), "concat": lambda x: concat_fusion(x, 0)}
-
-        # fusing token embeddings to get a single sentence embedding involves manipluating dim 1 of the stacked tensor
-        token_available_fusions = {"sum": lambda x: sum_fusion(x, 1), "mean": lambda x: mean_fusion(x, 1)}
-
+        token_available_fusions = {"sum": self._fuse_token_sum,
+                                   "mean": self._fuse_token_mean}
 
         self.hidden_states_fusion_strat = hidden_states_available_fusions[hidden_states_fusion_strat]
         self.token_fusion_strat = token_available_fusions[token_fusion_strat]
@@ -58,24 +82,35 @@ class BertSentenceEncoder(SentenceEncoder):
         self.model = BertModel.from_pretrained(model_name, output_hidden_states=True, **model_kwargs)
         self.hidden_states_num = hidden_states_num
 
-    def __call__(self, *sentences: Tuple[str]):
+    def _fuse_token_sum(self, *hidden_states: torch.Tensor):
+        # this will remove the token dimension for each hidden state:
+        # Input single hidden state: (batch_size x tokens x latent_dim) -> Output: (batch_size x latent_dim)
+        return [torch.sum(single_hidden_state, dim=1) for single_hidden_state in hidden_states]
 
-        outputs = []
+    def _fuse_token_mean(self, *hidden_states: torch.Tensor):
+        # this will remove the token dimension for each hidden state:
+        # Input single hidden state: (batch_size x tokens x latent_dim) -> Output: (batch_size x latent_dim)
+        return [torch.mean(single_hidden_state, dim=1) for single_hidden_state in hidden_states]
 
-        for sentence in sentences:
+    def _fuse_hidden_states_concat(self, list_hs_encoded_sentences: List[torch.Tensor]):
+        # the token dim has been removed, so input is (batch_size x latent_dim)
+        # input: (batch_size x latent_dim) -> (batch_size x (latent_dim * num_hidden_states))
+        return torch.concat(list_hs_encoded_sentences, dim=1)
 
-            with torch.no_grad():
-                tokenized_sentences = self.tokenizer(sentence, return_tensors='pt', truncation=True)
-                output_hidden_states = self.model(**tokenized_sentences).hidden_states[-self.hidden_states_num:]
-                output_stacked = torch.vstack(output_hidden_states)
+    def _fuse_hidden_states_sum(self, list_hs_encoded_sentences: List[torch.Tensor]):
+        # the token dim has been removed, so input is (batch_size x latent_dim)
+        # input: (batch_size x latent_dim) -> (batch_size x latent_dim)
+        # elements are summed batch-wise over the hidden states extracted
+        return torch.stack(list_hs_encoded_sentences).sum(dim=0)
 
-                # TO DO: keep track of dimensions during fusion (at the end dim (1 x hidden_states_optionally_concat)
-                sentence_embedding = self.token_fusion_strat(output_stacked)
+    def encode_batch(self, batch_sentences: List[str]):
+        tokenized_sentences = self.tokenizer(batch_sentences, return_tensors='pt', truncation=True, padding=True)
 
-                hidden_states_fused = self.hidden_states_fusion_strat(sentence_embedding)
+        with torch.no_grad():
+            output_hidden_states = self.model(**tokenized_sentences).hidden_states[-self.hidden_states_num:]
 
-                # sentence_embedding = sentence_embedding.squeeze(dim=0)
+        list_hs_encoded_sentences = self.token_fusion_strat(*output_hidden_states)
 
-                outputs.append(sentence_embedding)
+        hidden_states_fused = self.hidden_states_fusion_strat(list_hs_encoded_sentences)
 
-        return np.vstack(outputs)
+        return hidden_states_fused
