@@ -60,7 +60,7 @@ class ClusterLabel:
         encoded_fit_sentences = sentence_encoder(*sentences)
         self.clustering_alg = cluster_alg.fit(encoded_fit_sentences)
 
-    def __call__(self, *sentences: Tuple[str]) -> torch.IntTensor:
+    def __call__(self, *sentences: str) -> torch.IntTensor:
 
         sentences_encoded = self.sentence_encoder(*sentences)
         cluster_idxs = self.clustering_alg.predict(sentences_encoded)
