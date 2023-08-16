@@ -1,7 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
-from typing import Tuple
 import os
 import pickle
 
@@ -76,6 +75,7 @@ if __name__ == "__main__":
     all_labels = data['concept:name']
     all_unique_labels = pd.unique(data['concept:name'])
 
+    # TO DO: TRAIN ONLY ON TRAIN SET
     clus_alg = KMeansAlg(
         n_clusters=50,
         random_state=42,
@@ -84,11 +84,22 @@ if __name__ == "__main__":
     )
     kmeans = ClusterLabel(
         sentences=all_unique_labels,
-        sentence_encoder=BertSentenceEncoder(hidden_states_fusion_strat="concat"),
+        sentence_encoder=BertSentenceEncoder(model_name="nlpaueb/legal-bert-base-uncased",
+                                             token_fusion_strat="mean",
+                                             hidden_states_fusion_strat="concat"),
         cluster_alg=clus_alg
     )
 
-    print("we")
-    data = data.replace({'concept:name': sentence_mapping})
+    # here we should create a dict which is the maping between clusters and unique labels of the whole dataset,
+    # so that we can replace values in the pandas dataframe easily and efficiently
+    unique_labels_whole_dat = pd.unique(data["concept:name"]).tolist()
+    labels_converted_to_clusters = kmeans(*unique_labels_whole_dat)
 
-    data.to_csv(os.path.join(PROCESSED_DATA_DIR, 'clustered_dataset.csv'))
+    print(labels_converted_to_clusters)
+
+    # data["concept:name"] = labels_converted_to_clusters
+
+    # print("we")
+    # data = data.replace({'concept:name': sentence_mapping})
+    #
+    # data.to_csv(os.path.join(PROCESSED_DATA_DIR, 'clustered_dataset.csv'))
