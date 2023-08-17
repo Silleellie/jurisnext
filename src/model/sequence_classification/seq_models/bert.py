@@ -26,7 +26,7 @@ class FineTunedBert(BertForSequenceClassification, SeqClassification):
 
         if fit_label_cluster_mapper is not None:
 
-            immediate_next_cluster = fit_label_cluster_mapper.get_cluster_from_label(sample["immediate_next_title"])
+            immediate_next_cluster = fit_label_cluster_mapper.get_clusters_from_labels(sample["immediate_next_title"])
             text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
 
             output = self.tokenizer(text,

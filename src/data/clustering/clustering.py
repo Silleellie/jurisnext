@@ -77,7 +77,7 @@ class ClusterLabelMapper:
 
         return self
 
-    def get_cluster_from_label(self, labels: Union[str, Iterable[str]]) -> np.ndarray[str]:
+    def get_clusters_from_labels(self, labels: Union[str, Iterable[str]]) -> np.ndarray[int]:
         # check only one of the two, no need to check both
         assert self.labels_arr is not None, "call fit_predict method first!"
 
@@ -85,7 +85,7 @@ class ClusterLabelMapper:
 
         return self.cluster_arr[bool_mask]
 
-    def get_labels_from_cluster(self, clusters: Union[int, Iterable[int]]) -> np.ndarray[int]:
+    def get_labels_from_clusters(self, clusters: Union[int, Iterable[int]]) -> np.ndarray[str]:
         # check only one of the two, no need to check both
         assert self.labels_arr is not None, "call fit_predict method first!"
 
