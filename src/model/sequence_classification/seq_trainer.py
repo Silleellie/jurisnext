@@ -1,7 +1,10 @@
 import os
+from collections import defaultdict
 from math import ceil
+import itertools
 
 import datasets
+import numpy
 import numpy as np
 from datasets import load_dataset
 from sklearn.utils import compute_class_weight
@@ -10,20 +13,22 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from src import RANDOM_STATE, ROOT_PATH, MODELS_DIR
-from src.data.clustering import KMeansLearner
+from src.data.clustering import ClusterLabelMapper, KMeansAlg
 from src.data.dataset_map_fn import sample_sequence
 from src.model.sequence_classification.seq_models.bert import FineTunedBert
 from src.model.sequence_classification.seq_models.nli_deberta import FineTunedNliDeberta
-from src.sentence_encoders import SbertSentenceEncoder
+from src.sentence_encoders import SentenceEncoder, BertSentenceEncoder
 from src.utils import seed_everything
 
 
 class SeqTrainer:
 
     def __init__(self,
-                 n_epochs, batch_size,
+                 n_epochs,
+                 batch_size,
                  model,
                  all_labels: np.ndarray,
+                 cluster_label_mapper: ClusterLabelMapper = None,
                  device='cuda:0',
                  eval_batch_size=None,
                  num_workers=4,
@@ -36,6 +41,7 @@ class SeqTrainer:
         self.eval_batch_size = eval_batch_size if eval_batch_size is not None else batch_size
         self.num_workers = num_workers
         self.device = device
+        self.cluster_label_mapper = cluster_label_mapper
 
         # output name
         if output_name is None:
@@ -43,7 +49,22 @@ class SeqTrainer:
 
         self.output_path = os.path.join(MODELS_DIR, output_name)
 
+        self.labels_map = None
+        self.possible_labels_from_clusters = None
+
+    def _train_clusters(self, train_dataset: datasets.Dataset):
+
+        # retrieve all unique labels which appear in train set
+        flat_train_labels = itertools.chain.from_iterable(train_dataset["title_sequence"])
+        unique_train_labels = np.unique(np.fromiter(flat_train_labels, dtype=object)).astype(str)
+
+        # fit the cluster label mapper with train labels and all labels which should be clustered (both are unique)
+        self.cluster_label_mapper.fit(unique_train_labels, self.all_labels)
+
     def train(self, train_dataset: datasets.Dataset, validation_dataset: datasets.Dataset = None):
+
+        if self.cluster_label_mapper is not None:
+            self._train_clusters(train_dataset)
 
         # validation set remains the same and should NOT be sampled at each epoch, otherwise
         # results are not comparable
@@ -51,7 +72,8 @@ class SeqTrainer:
         sampled_val = validation_dataset.map(sample_sequence,
                                              remove_columns=validation_dataset.column_names,
                                              load_from_cache_file=False)
-        preprocessed_val = sampled_val.map(self.model.tokenize,
+        preprocessed_val = sampled_val.map(lambda x: self.model.tokenize(x,
+                                                                         self.cluster_label_mapper),
                                            remove_columns=sampled_val.column_names,
                                            load_from_cache_file=False)
         preprocessed_val.set_format("torch")
@@ -79,7 +101,8 @@ class SeqTrainer:
                                               remove_columns=train_dataset.column_names,
                                               load_from_cache_file=False,
                                               keep_in_memory=True)
-            preprocessed_train = sampled_train.map(self.model.tokenize,
+            preprocessed_train = sampled_train.map(lambda x: self.model.tokenize(x,
+                                                                                 self.cluster_label_mapper),
                                                    remove_columns=sampled_train.column_names,
                                                    load_from_cache_file=False,
                                                    keep_in_memory=True)
@@ -120,7 +143,6 @@ class SeqTrainer:
                     self.model.save_pretrained(self.output_path)
 
                 else:
-
                     no_change_counter += 1
 
     def validation(self, preprocessed_validation: datasets.Dataset):
@@ -161,7 +183,8 @@ class SeqTrainer:
         self.model.eval()
         sampled_test = test_dataset.map(sample_sequence,
                                         remove_columns=test_dataset.column_names, load_from_cache_file=False)
-        preprocessed_test = sampled_test.map(self.model.tokenize,
+        preprocessed_test = sampled_test.map(lambda x: self.model.tokenize(x,
+                                                                           self.cluster_label_mapper),
                                              remove_columns=sampled_test.column_names)
         preprocessed_test.set_format("torch")
 
@@ -220,39 +243,44 @@ if __name__ == "__main__":
     #     tokenizer=tokenizer
     # ).to('cuda:0')
 
-    train_labels_occurrences = np.array([el
-                                         for element in dataset["train"]
-                                         for el in element["title_sequence"]])
+    clus_alg = KMeansAlg(
+        n_clusters=50,
+        random_state=42,
+        init="k-means++",
+        n_init="auto"
+    )
 
-    kmeans = KMeansLearner(train_labels_occurrences, SbertSentenceEncoder())
-    sentence_mapping, sentence_cluster_to_others = kmeans.get_sentence_mapping(all_unique_labels)
+    sent_encoder = BertSentenceEncoder(
+        model_name="nlpaueb/legal-bert-base-uncased",
+        token_fusion_strat="mean",
+        hidden_states_fusion_strat="concat"
+    )
+
+    cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
 
     model = FineTunedNliDeberta.from_pretrained(
         "cross-encoder/nli-deberta-v3-xsmall",
         all_unique_labels=all_unique_labels,
         tokenizer=tokenizer,
-        title_to_cluster_title=sentence_mapping,
-        cluster_title_to_possible_titles=sentence_cluster_to_others
     ).to('cuda:0')
-
-    train = dataset["train"]
-    val = dataset["validation"]
-    test = dataset["test"]
 
     trainer = SeqTrainer(
         model=model,
         n_epochs=n_epochs,
         batch_size=batch_size,
         all_labels=all_unique_labels,
-        eval_batch_size=eval_batch_size
+        cluster_label_mapper=cluster_label,
+        eval_batch_size=eval_batch_size,
     )
+
+    train = dataset["train"]
+    val = dataset["validation"]
+    test = dataset["test"]
 
     trainer.train(train, val)
 
     trainer.model = FineTunedNliDeberta.from_pretrained(trainer.output_path,
                                                         all_unique_labels=all_unique_labels,
-                                                        tokenizer=tokenizer,
-                                                        title_to_cluster_title=sentence_mapping,
-                                                        cluster_title_to_possible_titles=sentence_cluster_to_others)
+                                                        tokenizer=tokenizer)
 
     trainer.evaluate(test)
