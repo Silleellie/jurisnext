@@ -1,5 +1,7 @@
 from abc import abstractmethod
 
+from src.data.clustering import ClusterLabelMapper
+
 
 # interface for all sequence classification models
 class SeqClassification:
@@ -9,8 +11,7 @@ class SeqClassification:
         self.optimizer = optimizer
 
     @abstractmethod
-    def tokenize(self, sample):
-
+    def tokenize(self, sample, label_cluster_mapper: ClusterLabelMapper):
         raise NotImplementedError
 
     @abstractmethod

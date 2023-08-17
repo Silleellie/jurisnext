@@ -1,8 +1,9 @@
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from transformers import BertTokenizerFast, BertForSequenceClassification
+from transformers import BertForSequenceClassification
 
+from src.data.clustering import ClusterLabelMapper
 from src.model.sequence_classification.seq_models_interface import SeqClassification
 
 
@@ -21,11 +22,21 @@ class FineTunedBert(BertForSequenceClassification, SeqClassification):
 
         self.labels_weights = torch.from_numpy(labels_weights).to(torch.float32)
 
-    def tokenize(self, sample):
+    def tokenize(self, sample, fit_label_cluster_mapper: ClusterLabelMapper = None):
 
-        output = self.tokenizer(', '.join(sample["input_title_sequence"]),
-                                return_tensors='pt',
-                                truncation=True)
+        if fit_label_cluster_mapper is not None:
+
+            immediate_next_cluster = fit_label_cluster_mapper.get_cluster_from_label(sample["immediate_next_title"])
+            text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
+
+            output = self.tokenizer(text,
+                                    return_tensors='pt',
+                                    truncation=True)
+
+        else:
+            output = self.tokenizer(', '.join(sample["input_title_sequence"]),
+                                    return_tensors='pt',
+                                    truncation=True)
 
         labels = torch.Tensor([self.config.label2id[sample["immediate_next_title"]]])
 

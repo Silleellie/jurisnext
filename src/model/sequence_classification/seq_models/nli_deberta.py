@@ -7,13 +7,16 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import DebertaV2ForSequenceClassification
 
+from src.data.clustering import ClusterLabelMapper
 from src.model.sequence_classification.seq_models_interface import SeqClassification
 
 
 class FineTunedNliDeberta(DebertaV2ForSequenceClassification, SeqClassification):
 
-    def __init__(self, config, all_unique_labels: np.ndarray, tokenizer,
-                 title_to_cluster_title: dict, cluster_title_to_possible_titles: dict,
+    def __init__(self,
+                 config,
+                 all_unique_labels: np.ndarray,
+                 tokenizer,
                  validation_mini_batch_size: int = 16):
 
         DebertaV2ForSequenceClassification.__init__(self, config)
@@ -27,26 +30,25 @@ class FineTunedNliDeberta(DebertaV2ForSequenceClassification, SeqClassification)
         self.all_unique_labels = all_unique_labels
 
         self.template = "Next title paragraph is {}"
-
-        self.title_to_cluster_title = title_to_cluster_title
-        self.cluster_title_to_possible_titles = cluster_title_to_possible_titles
         self.validation_mini_batch_size = validation_mini_batch_size
 
-    def tokenize(self, sample):
+    def tokenize(self, sample, fit_label_cluster_mapper: ClusterLabelMapper = None):
 
-        next_cluster_title = self.title_to_cluster_title[sample["immediate_next_title"]]
-        next_possible_titles = self.cluster_title_to_possible_titles[next_cluster_title]
-        next_possible_titles = np.array(next_possible_titles)
-        next_possible_titles_correct_idx = np.where(next_possible_titles == sample["immediate_next_title"])[0].item()
+        if fit_label_cluster_mapper is not None:
+            immediate_next_cluster = fit_label_cluster_mapper.get_cluster_from_label(sample["immediate_next_title"])
+            next_candidate_titles = fit_label_cluster_mapper.get_labels_from_cluster(immediate_next_cluster)
+            text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
+        else:
+            next_candidate_titles = self.all_unique_labels
+            text = ", ".join(sample["input_title_sequence"])
 
-        text = ", ".join(sample["input_title_sequence"]) + " -> " + next_cluster_title
         label = sample["immediate_next_title"]
-        label_ent = self.config.label2id["entailment"]
-        label_contr = self.config.label2id["contradiction"]
+        label_ent: int = self.config.label2id["entailment"]
+        label_contr: int = self.config.label2id["contradiction"]
 
         if self.training:
 
-            wrong_label = random.choice(next_possible_titles[next_possible_titles != sample["immediate_next_title"]])
+            wrong_label = random.choice(next_candidate_titles[next_candidate_titles != label])
             encoded_sequence = self.tokenizer([(text, self.template.format(label)),
                                                (text, self.template.format(wrong_label))],
                                               truncation=True)
@@ -55,13 +57,18 @@ class FineTunedNliDeberta(DebertaV2ForSequenceClassification, SeqClassification)
 
         else:
 
-            encoded_sequence = self.tokenizer([(text, self.template.format(sent)) for sent in next_possible_titles],
+            encoded_sequence = self.tokenizer([(text, self.template.format(candidate_title))
+                                               for candidate_title in next_candidate_titles],
                                               return_tensors='pt',
                                               padding=True,
                                               truncation=True)
 
-            encoded_sequence["labels"] = [label_ent if i == next_possible_titles_correct_idx else label_contr
-                                          for i in range(len(next_possible_titles))]
+            encoded_sequence["labels"] = torch.full(size=next_candidate_titles.shape, fill_value=label_contr)
+
+            next_possible_titles_correct_idx = next_candidate_titles == label
+            encoded_sequence["labels"][next_possible_titles_correct_idx] = label_ent
+
+            encoded_sequence["labels"] = encoded_sequence["labels"].tolist()
 
         return encoded_sequence
 
