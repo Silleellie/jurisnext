@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 
 import os
 import pickle
+from typing import List, Iterable, Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -50,25 +51,50 @@ class KMedoidsAlg(ClusterAlg):
         return self.alg.predict(sentences_encoded)
 
 
-class ClusterLabel:
+class ClusterLabelMapper:
 
-    def __init__(self, sentences: np.ndarray, sentence_encoder: SentenceEncoder, cluster_alg: ClusterAlg):
-
+    def __init__(self, sentence_encoder: SentenceEncoder, cluster_alg: ClusterAlg):
         self.sentence_encoder = sentence_encoder
+        self.clustering_alg = cluster_alg
 
-        encoded_fit_sentences = sentence_encoder(*sentences)
-        self.clustering_alg = cluster_alg.fit(encoded_fit_sentences)
+        # ["summary", "cost", "eu law reference", ...]
+        self.labels_arr: Optional[np.ndarray] = None
 
-    def __call__(self, *sentences: str) -> torch.IntTensor:
+        # [0, 1, 0, ...]
+        self.cluster_arr: Optional[np.ndarray] = None
 
-        sentences_encoded = self.sentence_encoder(*sentences)
-        cluster_idxs = self.clustering_alg.predict(sentences_encoded)
+    def fit(self, train_sentences: np.ndarray[str], all_sentences: np.ndarray[str]) -> ClusterLabelMapper:
+        encoded_train_sentences = self.sentence_encoder(*train_sentences,
+                                                        desc="Encoding TRAIN labels for clustering...")
+        self.clustering_alg.fit(encoded_train_sentences)
 
-        return torch.IntTensor(cluster_idxs)
+        encoded_pred_sentences = self.sentence_encoder(*all_sentences,
+                                                       desc="Encoding ALL labels for clustering...")
+        pred_clusters = self.clustering_alg.predict(encoded_pred_sentences)
+
+        self.labels_arr = all_sentences
+        self.cluster_arr = pred_clusters
+
+        return self
+
+    def get_cluster_from_label(self, labels: Union[str, Iterable[str]]) -> np.ndarray[str]:
+        # check only one of the two, no need to check both
+        assert self.labels_arr is not None, "call fit_predict method first!"
+
+        bool_mask = np.where(self.labels_arr == labels)
+
+        return self.cluster_arr[bool_mask]
+
+    def get_labels_from_cluster(self, clusters: Union[int, Iterable[int]]) -> np.ndarray[int]:
+        # check only one of the two, no need to check both
+        assert self.labels_arr is not None, "call fit_predict method first!"
+
+        bool_mask = np.where(self.cluster_arr == clusters)
+
+        return self.labels_arr[bool_mask]
 
 
 if __name__ == "__main__":
-
     with open(os.path.join(RAW_DATA_DIR, "pre-processed_representations.pkl"), "rb") as f:
         data: pd.DataFrame = pickle.load(f)
 
@@ -82,20 +108,19 @@ if __name__ == "__main__":
         init="k-means++",
         n_init="auto"
     )
-    kmeans = ClusterLabel(
-        sentences=all_unique_labels,
+    kmeans = ClusterLabelMapper(
         sentence_encoder=BertSentenceEncoder(model_name="nlpaueb/legal-bert-base-uncased",
                                              token_fusion_strat="mean",
                                              hidden_states_fusion_strat="concat"),
         cluster_alg=clus_alg
     )
 
-    # here we should create a dict which is the maping between clusters and unique labels of the whole dataset,
-    # so that we can replace values in the pandas dataframe easily and efficiently
-    unique_labels_whole_dat = pd.unique(data["concept:name"]).tolist()
-    labels_converted_to_clusters = kmeans(*unique_labels_whole_dat)
+    # MOCK TRAIN
+    mock_train_unique_labels = all_unique_labels[:500]
+    mock_all_unique_labels = all_unique_labels[:700]
 
-    print(labels_converted_to_clusters)
+    kmeans.fit(train_sentences=mock_train_unique_labels,
+               all_sentences=mock_all_unique_labels[:600])
 
     # data["concept:name"] = labels_converted_to_clusters
 
