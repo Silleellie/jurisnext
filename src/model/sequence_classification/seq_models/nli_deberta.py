@@ -130,8 +130,12 @@ class FineTunedNliDeberta(DebertaV2ForSequenceClassification, SeqClassification)
 
         val_loss = 0
         acc = 0
+        label_contr = self.config.label2id["contradiction"]
+        label_ent = self.config.label2id["entailment"]
 
-        for i, truth in enumerate(batch['labels']):
+        # we cycle through each sample of the batch, each sample has associated
+        # (num_candidate_labels x pad_dim) input_ids, labels, attention_mask, etc.
+        for i in range(len(batch["input_ids"])):
 
             output_logits = []
             # ceil to not drop the last batch
@@ -144,21 +148,28 @@ class FineTunedNliDeberta(DebertaV2ForSequenceClassification, SeqClassification)
                 output_logits.append(output.logits)
 
             output_logits = torch.vstack(output_logits)
-            entail_contradiction_logits = output_logits[:,
-                                          [self.config.label2id["contradiction"], self.config.label2id["entailment"]]]
+            entail_contradiction_logits = output_logits[:, [label_contr, label_ent]]
             probs = entail_contradiction_logits.softmax(dim=1)
+
             prob_label_is_true = probs[:, 1]
-            truth = batch["labels"][i]
+            truth: torch.Tensor = batch["labels"][i]
 
             loss = torch.nn.functional.binary_cross_entropy(
                 prob_label_is_true,
                 truth.float()
             )
 
-            prediction = prob_label_is_true.argmax(0)
-            truth_prediction = truth.argmax(0)
+            truth: torch.Tensor = truth
+
+            # get index of label which is entailment in prediction tensor
+            prediction_index: torch.Tensor = prob_label_is_true.argmax(0).item()
+
+            # get index of label which is entailment in truth tensor
+            truth_index = (truth == self.config.label2id["entailment"]).nonzero().item()
+
+            # increment accuracy if they match
+            acc += 1 if prediction_index == truth_index else 0
 
             val_loss += loss
-            acc += 1 if prediction == truth_prediction else 0
 
         return acc, val_loss
