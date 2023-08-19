@@ -10,7 +10,7 @@ from src.model.sequence_classification.seq_models_interface import SeqClassifica
 # maybe consider composition rather than multiple inheritance
 class FineTunedBert(BertForSequenceClassification, SeqClassification):
 
-    def __init__(self, config, labels_weights: np.ndarray, tokenizer):
+    def __init__(self, config, labels_weights: np.ndarray, tokenizer, device):
 
         BertForSequenceClassification.__init__(self, config)
 
@@ -20,7 +20,8 @@ class FineTunedBert(BertForSequenceClassification, SeqClassification):
             optimizer=torch.optim.AdamW(list(self.parameters()), lr=2e-5)
         )
 
-        self.labels_weights = torch.from_numpy(labels_weights).to(torch.float32)
+        self.to(device)
+        self.labels_weights = torch.from_numpy(labels_weights).float().to(device)
 
     def tokenize(self, sample, fit_label_cluster_mapper: ClusterLabelMapper = None):
 
@@ -30,20 +31,18 @@ class FineTunedBert(BertForSequenceClassification, SeqClassification):
             text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
 
             output = self.tokenizer(text,
-                                    return_tensors='pt',
                                     truncation=True)
 
         else:
             output = self.tokenizer(', '.join(sample["input_title_sequence"]),
-                                    return_tensors='pt',
                                     truncation=True)
 
-        labels = torch.Tensor([self.config.label2id[sample["immediate_next_title"]]])
+        labels = [self.config.label2id[sample["immediate_next_title"]]]
 
-        return {'input_ids': output['input_ids'].squeeze(),
-                'token_type_ids': output['token_type_ids'].squeeze(),
-                'attention_mask': output['attention_mask'].squeeze(),
-                'labels': labels.long()}
+        return {'input_ids': output['input_ids'],
+                'token_type_ids': output['token_type_ids'],
+                'attention_mask': output['attention_mask'],
+                'labels': labels}
 
     def prepare_input(self, batch):
         input_dict = {}
@@ -57,18 +56,19 @@ class FineTunedBert(BertForSequenceClassification, SeqClassification):
         input_dict["attention_mask"] = attention_mask.to(self.device)
 
         if "labels" in batch:
-            input_dict["labels"] = batch["labels"].to(self.device)
+            input_dict["labels"] = batch["labels"].to(self.device).flatten()
 
         return input_dict
 
     def train_step(self, batch):
 
         output = self(**batch)
+        truth = batch["labels"]
 
         loss = torch.nn.functional.cross_entropy(
-            output.logits.view(-1, self.config.num_labels),
-            batch["labels"].view(-1),
-            weight=self.labels_weights.to(self.device)
+            output.logits,
+            truth,
+            weight=self.labels_weights
         )
 
         return output.logits, loss
@@ -77,19 +77,16 @@ class FineTunedBert(BertForSequenceClassification, SeqClassification):
     def valid_step(self, batch):
 
         output = self(**batch)
+        truth: torch.Tensor = batch["labels"]
+        # batch size (batch_size, num_labels) -> (batch_size, 1)
+        predictions: torch.Tensor = output.logits.argmax(dim=1)
 
         val_loss = torch.nn.functional.cross_entropy(
-            output.logits.view(-1, self.config.num_labels),
-            batch["labels"].view(-1),
-            weight=self.labels_weights.to(self.device)
+            output.logits,
+            truth,
+            weight=self.labels_weights
         )
 
-        predictions = output.logits.argmax(1)
-
-        truth = batch['labels'].view(-1)
-
-        acc = sum(
-            x == y for x, y in zip(predictions, truth)
-        )
+        acc = (predictions == truth).sum()
 
         return acc, val_loss
