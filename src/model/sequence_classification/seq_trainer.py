@@ -10,14 +10,16 @@ from datasets import load_dataset
 from sklearn.utils import compute_class_weight
 
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, T5TokenizerFast
 
 from src import RANDOM_STATE, ROOT_PATH, MODELS_DIR
 from src.data.clustering import ClusterLabelMapper, KMeansAlg
 from src.data.dataset_map_fn import sample_sequence
+from src.model.lm.t5.flan_t5 import FineTunedFlanT5
+from src.model.lm.t5.templates import ClusteredNTPSideInfo, DirectNTP, ClusteredNTP, DirectNTPSideInfo
 from src.model.sequence_classification.seq_models.bert import FineTunedBert
 from src.model.sequence_classification.seq_models.nli_deberta import FineTunedNliDeberta
-from src.sentence_encoders import SentenceEncoder, BertSentenceEncoder
+from src.sentence_encoders import SentenceEncoder, BertSentenceEncoder, SentenceTransformerEncoder
 from src.utils import seed_everything
 
 
@@ -209,60 +211,35 @@ class SeqTrainer:
         print(matches / preprocessed_test.num_rows)
 
 
-if __name__ == "__main__":
-    seed_everything(RANDOM_STATE)
-
-    # PARAMETERS
-    n_epochs = 10
-    batch_size = 2
-    eval_batch_size = 1
-    tokenizer_name = "cross-encoder/nli-deberta-v3-xsmall"
-
-    dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
-
-    all_labels_occurrences = np.array([el
-                                       for split in dataset
-                                       for element in dataset[split]
-                                       for el in element["title_sequence"]])
-
-    all_unique_labels = np.unique(all_labels_occurrences)
-
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-
-    # labels_weights = compute_class_weight(class_weight='balanced', classes=all_unique_labels, y=all_labels_occurrences)
-    #
-    # model = FineTunedBert.from_pretrained(
-    #     'bert-base-uncased',
-    #     problem_type="single_label_classification",
-    #     num_labels=len(all_unique_labels),
-    #     id2label={idx: label for idx, label in
-    #               enumerate(all_unique_labels)},
-    #     label2id={label: idx for idx, label in
-    #               enumerate(all_unique_labels)},
-    #     labels_weights=labels_weights,
-    #     tokenizer=tokenizer
-    # ).to('cuda:0')
+def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labels, device):
 
     clus_alg = KMeansAlg(
-        n_clusters=50,
+        n_clusters=200,
         random_state=42,
         init="k-means++",
         n_init="auto"
     )
 
-    sent_encoder = BertSentenceEncoder(
-        model_name="nlpaueb/legal-bert-base-uncased",
-        token_fusion_strat="mean",
-        hidden_states_fusion_strat="concat"
+    sent_encoder = SentenceTransformerEncoder(
+        device=device,
     )
 
-    cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
-
-    model = FineTunedNliDeberta.from_pretrained(
-        "cross-encoder/nli-deberta-v3-xsmall",
-        all_unique_labels=all_unique_labels,
+    tokenizer = T5TokenizerFast.from_pretrained("google/flan-t5-small")
+    model = FineTunedFlanT5.from_pretrained(
+        "google/flan-t5-small",
+        sentence_encoder=sent_encoder,
+        all_labels=all_unique_labels,
         tokenizer=tokenizer,
-    ).to('cuda:0')
+        device=device,
+        test_task=ClusteredNTPSideInfo()
+    )
+
+    new_words = ['<', '>']
+
+    tokenizer.add_tokens(new_words)
+    model.resize_token_embeddings(len(tokenizer))
+
+    cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
 
     trainer = SeqTrainer(
         model=model,
@@ -279,8 +256,46 @@ if __name__ == "__main__":
 
     trainer.train(train, val)
 
-    trainer.model = FineTunedNliDeberta.from_pretrained(trainer.output_path,
-                                                        all_unique_labels=all_unique_labels,
-                                                        tokenizer=tokenizer)
+    print("clustered ntp side info")
+    trainer.model = FineTunedFlanT5.from_pretrained(trainer.output_path,
+                                                    sentence_encoder=sent_encoder,
+                                                    all_labels=all_unique_labels,
+                                                    tokenizer=tokenizer,
+                                                    device=device,
+                                                    test_task=ClusteredNTPSideInfo())
+
 
     trainer.evaluate(test)
+
+    print("direct ntp")
+    trainer.model.set_test_task(DirectNTP())
+    trainer.evaluate(test)
+
+    print("direct ntp with side info")
+    trainer.model.set_test_task(DirectNTPSideInfo())
+    trainer.evaluate(test)
+
+    print("clustered ntp")
+    trainer.model.set_test_task(ClusteredNTP())
+    trainer.evaluate(test)
+
+
+if __name__ == "__main__":
+    seed_everything(RANDOM_STATE)
+
+    # PARAMETERS
+    n_epochs = 20
+    batch_size = 4
+    eval_batch_size = 2
+    device = "cuda:0"
+
+    dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
+
+    all_labels_occurrences = np.array([el
+                                       for split in dataset
+                                       for element in dataset[split]
+                                       for el in element["title_sequence"]])
+
+    all_unique_labels = np.unique(all_labels_occurrences)
+
+    flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labels, device)
