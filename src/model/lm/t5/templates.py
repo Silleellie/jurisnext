@@ -31,7 +31,7 @@ class NextTitlePrediction(Task):
         )
     }
 
-    def __call__(self, title_sequence, target_title):
+    def __call__(self, title_sequence, target_title, **kwargs):
 
         # random select of string separator for titles sequence and the prompt to use
         separator = " - " if random.getrandbits(1) else " ; "
@@ -108,7 +108,7 @@ class BoolNTP(Task):
     def __init__(self, all_titles: np.ndarray):
         self.all_titles = all_titles
 
-    def __call__(self, title_sequence, target_title):
+    def __call__(self, title_sequence, target_title, **kwargs):
         # random select of string separator for titles sequence and the prompt to use
         separator = " - " if random.getrandbits(1) else " ; "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
