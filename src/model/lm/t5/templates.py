@@ -10,7 +10,7 @@ PromptTarget = namedtuple("PromptTarget", ["input_prompt", "target_text"])
 class Task(ABC):
 
     @abstractmethod
-    def __call__(self, title_sequence, target_title):
+    def __call__(self, title_sequence, target_title, **kwargs):
         raise NotImplementedError
 
 
@@ -78,5 +78,108 @@ class BoolNextTitlePrediction(Task):
         list_to_text = separator.join(title_sequence)
         text = input_prompt.format(list_to_text, target_title)
         target = target_text.format(target_text_label)
+
+        return text, target
+
+
+class ClusteredNTP(Task):
+
+    templates = {
+        0: PromptTarget(
+            input_prompt="ClusteredNTP:\n\n"
+                         "The title sequence is the following:\n"
+                         "{}\n\n"
+                         "The next title is in cluster {}, what is the next element of the sequence?\n"
+                         "Choose one among the following options:\n"
+                         "{}",  # bullet list
+            target_text="{}"
+        ),
+        1: PromptTarget(
+            input_prompt="ClusteredNTP:\n\n"
+                         "Previous titles:\n"
+                         "{}\n"
+                         "Next title cluster:\n"
+                         "{}\n\n"
+                         "Chose the next title from the followings:\n"
+                         "{}",
+            target_text="{}"
+        )
+    }
+
+    def __call__(self, title_sequence, target_title, **kwargs):
+
+        assert "cluster_mapper" in kwargs, "cluster_mapper should be set to use this template!"
+        cluster_mapper = kwargs.pop("cluster_mapper")
+
+        next_cluster = cluster_mapper.get_clusters_from_labels(target_title).item()
+        next_possible_titles = cluster_mapper.get_labels_from_clusters(next_cluster)
+
+        # random select of string separator for titles sequence and the prompt to use
+        separator = " - " if random.getrandbits(1) else " ; "
+        bullet_notation = " - " if random.getrandbits(1) else " * "
+        input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
+
+        list_to_text = separator.join(title_sequence)
+        possible_titles_to_bullet_list = (f"{bullet_notation} {{}}\n" * len(next_possible_titles)).format(*next_possible_titles)
+
+        text = input_prompt.format(list_to_text, next_cluster, possible_titles_to_bullet_list)
+        target = target_text.format(target_title)
+
+        return text, target
+
+
+class ClusteredNTPSideInfo(Task):
+
+    templates = {
+        0: PromptTarget(
+            input_prompt="ClusteredNTPSideInfo:\n\n"
+                         "The title sequence is the following:\n"
+                         "{}\n"
+                         "Relevant keywords of the sequence are:\n"
+                         "{}\n"
+                         "The next title is in cluster {}, what is the next element of the sequence?\n"
+                         "Choose one among the following options:\n"
+                         "{}",  # bullet list
+            target_text="{}"
+        ),
+        1: PromptTarget(
+            input_prompt="ClusteredNTPSideInfo:\n\n"
+                         "Previous titles:\n"
+                         "{}\n"
+                         "Relevant keywords:\n"
+                         "{}\n"
+                         "Next title cluster:\n"
+                         "{}\n"
+                         "Chose one of the followings:\n"
+                         "{}",
+            target_text="{}"
+        )
+    }
+
+    def __call__(self, title_sequence, target_title, **kwargs):
+
+        assert "cluster_mapper" in kwargs, "cluster_mapper should be set to use this template!"
+        assert "rel_keywords_seq" in kwargs, "rel_keywords should be set to use this template!"
+        cluster_mapper = kwargs.pop("cluster_mapper")
+        rel_keywords_seq = kwargs.pop("rel_keywords_seq")
+
+        # since using all keywords of all elements of the sequence is too much,
+        # we choose at random one for each element of the sequence
+        reduced_rel_keywords = [random.choice(rel_keywords.split(", ")) for rel_keywords in rel_keywords_seq]
+
+        next_cluster = cluster_mapper.get_clusters_from_labels(target_title).item()
+        next_possible_titles = cluster_mapper.get_labels_from_clusters(next_cluster)
+
+        # random select of string separator for titles sequence and the prompt to use
+        separator = " - " if random.getrandbits(1) else " ; "
+        bullet_notation = " - " if random.getrandbits(1) else " * "
+        input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
+
+        list_to_text = separator.join(title_sequence)
+        list_to_rel_keywords = separator.join(reduced_rel_keywords)
+        possible_titles_to_bullet_list = (f"{bullet_notation} {{}}\n" * len(next_possible_titles)).format(*next_possible_titles)
+
+        text = input_prompt.format(list_to_text, list_to_rel_keywords, next_cluster, possible_titles_to_bullet_list)
+        target = target_text.format(target_title)
 
         return text, target
