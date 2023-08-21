@@ -14,7 +14,7 @@ class Task(ABC):
         raise NotImplementedError
 
 
-class NextTitlePrediction(Task):
+class DirectNTP(Task):
 
     templates = {
         0: PromptTarget(
