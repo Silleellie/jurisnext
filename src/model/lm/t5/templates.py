@@ -34,7 +34,7 @@ class NextTitlePrediction(Task):
     def __call__(self, title_sequence, target_title):
 
         # random select of string separator for titles sequence and the prompt to use
-        separator = ", " if random.getrandbits(1) else "; "
+        separator = " - " if random.getrandbits(1) else " ; "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
 
         list_to_text = separator.join(title_sequence)
@@ -110,7 +110,7 @@ class BoolNTP(Task):
 
     def __call__(self, title_sequence, target_title):
         # random select of string separator for titles sequence and the prompt to use
-        separator = ", " if random.getrandbits(1) else "; "
+        separator = " - " if random.getrandbits(1) else " ; "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
 
         # if randomly true, the next title is the correct one,
