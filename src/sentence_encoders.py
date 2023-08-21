@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from math import ceil
-from typing import Literal, List
+from typing import Literal, List, Union
 
 import datasets
 import torch
@@ -13,14 +13,15 @@ from transformers import BertModel, BertTokenizerFast
 
 class SentenceEncoder(ABC):
 
-    def __init__(self, batch_size: int = 64):
+    def __init__(self, batch_size: int = 64, device: str = "cpu"):
         self.batch_size = batch_size
+        self.device = device
 
     @abstractmethod
-    def encode_batch(self, batch_sentences: List[str]):
+    def encode_batch(self, batch_sentences: List[str]) -> torch.Tensor:
         raise NotImplementedError
 
-    def __call__(self, *sentences: str, desc: str = None) -> np.ndarray:
+    def __call__(self, *sentences: str, desc: str = None, as_tensor: bool = False) -> Union[torch.Tensor, np.ndarray]:
         outputs = []
 
         dataset = datasets.Dataset.from_dict({"sentences": sentences})
@@ -37,22 +38,21 @@ class SentenceEncoder(ABC):
 
         pbar.close()
 
-        return torch.vstack(outputs).numpy()
+        encoded_sentence = torch.vstack(outputs)
+
+        return encoded_sentence if as_tensor else encoded_sentence.cpu().numpy()
 
 
 class SentenceTransformerEncoder(SentenceEncoder):
 
-    def __init__(self, model_name='all-MiniLM-L6-v2', batch_size=128, model_kwargs=None):
+    def __init__(self, model_name='all-MiniLM-L6-v2', batch_size=128, device="cpu", **model_kwargs):
 
-        super().__init__(batch_size=batch_size)
+        super().__init__(batch_size=batch_size, device=device)
 
-        if model_kwargs is None:
-            model_kwargs = {}
+        self.model = SentenceTransformer(model_name, device=self.device, **model_kwargs)
 
-        self.model = SentenceTransformer(model_name, **model_kwargs)
-
-    def encode_batch(self, batch_sentences: List[str]):
-        return self.model.encode(batch_sentences, batch_size=self.batch_size)
+    def encode_batch(self, batch_sentences: List[str]) -> torch.Tensor:
+        return self.model.encode(batch_sentences, batch_size=self.batch_size, convert_to_tensor=True)
 
 
 class BertSentenceEncoder(SentenceEncoder):
@@ -62,12 +62,10 @@ class BertSentenceEncoder(SentenceEncoder):
                  hidden_states_num=4,
                  hidden_states_fusion_strat: Literal["sum", "concat"] = "sum",
                  token_fusion_strat: Literal["sum", "mean"] = "sum",
-                 model_kwargs=None):
+                 device="cpu",
+                 **model_kwargs):
 
-        super().__init__(batch_size=batch_size)
-
-        if model_kwargs is None:
-            model_kwargs = {}
+        super().__init__(batch_size=batch_size, device=device)
 
         hidden_states_available_fusions = {"sum": self._fuse_hidden_states_sum,
                                            "concat": self._fuse_hidden_states_concat}
@@ -79,7 +77,7 @@ class BertSentenceEncoder(SentenceEncoder):
         self.token_fusion_strat = token_available_fusions[token_fusion_strat]
 
         self.tokenizer = BertTokenizerFast.from_pretrained(model_name)
-        self.model = BertModel.from_pretrained(model_name, output_hidden_states=True, **model_kwargs)
+        self.model = BertModel.from_pretrained(model_name, output_hidden_states=True, **model_kwargs).to(self.device)
         self.hidden_states_num = hidden_states_num
 
     def _fuse_token_sum(self, *hidden_states: torch.Tensor):
@@ -103,8 +101,11 @@ class BertSentenceEncoder(SentenceEncoder):
         # elements are summed batch-wise over the hidden states extracted
         return torch.stack(list_hs_encoded_sentences).sum(dim=0)
 
-    def encode_batch(self, batch_sentences: List[str]):
-        tokenized_sentences = self.tokenizer(batch_sentences, return_tensors='pt', truncation=True, padding=True)
+    def encode_batch(self, batch_sentences: List[str]) -> torch.Tensor:
+        tokenized_sentences = self.tokenizer(batch_sentences,
+                                             return_tensors='pt',
+                                             truncation=True,
+                                             padding=True).to(self.device)
 
         with torch.no_grad():
             output_hidden_states = self.model(**tokenized_sentences).hidden_states[-self.hidden_states_num:]
