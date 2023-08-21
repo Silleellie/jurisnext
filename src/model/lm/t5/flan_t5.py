@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import T5ForConditionalGeneration, Adafactor
 
 from src.data.clustering import ClusterLabelMapper
-from src.model.lm.t5.templates import NextTitlePrediction, BoolNextTitlePrediction
+from src.model.lm.t5.templates import DirectNTP, BoolNTP, ClusteredNTP, ClusteredNTPSideInfo, Task, DirectNTPSideInfo
 from src.model.sequence_classification.seq_models_interface import SeqClassification
 from src.sentence_encoders import SentenceEncoder
 
@@ -15,7 +15,8 @@ from src.sentence_encoders import SentenceEncoder
 class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
 
     def __init__(self, config, sentence_encoder: SentenceEncoder, all_labels: np.ndarray, tokenizer, device,
-                 num_return_sequences=5, max_new_tokens=50, num_beams=30, no_repeat_ngram_size=0, early_stopping=True):
+                 num_return_sequences=5, max_new_tokens=50, num_beams=30, no_repeat_ngram_size=0, early_stopping=True,
+                 test_task: Task = DirectNTP()):
 
         T5ForConditionalGeneration.__init__(self, config)
 
@@ -46,28 +47,47 @@ class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
 
         self.all_labels = all_labels
         self.sim_model = sentence_encoder
-        self.encoded_all_labels = self.sim_model(*all_labels, desc="Encoding ALL labels for FlanT5...")
-        self.task_list = [NextTitlePrediction(), BoolNextTitlePrediction(self.all_labels)]
-        self.test_task = NextTitlePrediction()  # for testing we want that the model predicts the title as output
+        self.encoded_all_labels = self.sim_model(*all_labels, desc="Encoding ALL labels for FlanT5...", as_tensor=True)
+
+        # training tasks
+        self.task_list = [
+            DirectNTP(),
+            DirectNTPSideInfo(),
+            BoolNTP(all_labels)
+        ]
+
+        self.cluster_task_list = [
+            ClusteredNTP(),
+            ClusteredNTPSideInfo()
+        ]
+
+        # for test we only use one task
+        self.test_task = test_task
 
         self.to(device)
+
+    def set_test_task(self, test_task: Task):
+        self.test_task = test_task
 
     def tokenize(self, sample, fit_label_cluster_mapper: ClusterLabelMapper = None):
 
         title_sequence = sample["input_title_sequence"]
         next_title = sample["immediate_next_title"]
+        rel_keywords_sequence = sample["input_keywords_sequence"]
+        train_task_list = self.task_list
 
-        task = random.choice(self.task_list) if self.training else self.test_task
+        if fit_label_cluster_mapper:
+            train_task_list = self.task_list + self.cluster_task_list
 
-        input_text, target_text = task(title_sequence, next_title)
+        task = random.choice(train_task_list) if self.training else self.test_task
 
-        if fit_label_cluster_mapper is not None:
-            immediate_next_cluster = fit_label_cluster_mapper.get_clusters_from_labels(sample["immediate_next_title"])
-            additional_info = f"\nNext title cluster: {immediate_next_cluster}"
-            input_text = input_text + additional_info
+        input_text, target_text = task(title_sequence, next_title,
+                                       cluster_mapper=fit_label_cluster_mapper,
+                                       rel_keywords_seq=rel_keywords_sequence)
 
         encoded_sequence = self.tokenizer(text=input_text, text_target=target_text, truncation=True)
         encoded_sequence["immediate_next_title"] = next_title
+
         return encoded_sequence
 
     def prepare_input(self, batch):
@@ -116,7 +136,7 @@ class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
         generated_sents = self.tokenizer.batch_decode(beam_outputs, skip_special_tokens=True)
         encoded_preds = self.sim_model.encode_batch(generated_sents)
 
-        sim = util.cos_sim(encoded_preds, self.encoded_all_labels).numpy()
+        sim = util.cos_sim(encoded_preds, self.encoded_all_labels).cpu()
         mapped_predictions = self.all_labels[sim.argmax(axis=1)]
 
         val_loss = output.loss
