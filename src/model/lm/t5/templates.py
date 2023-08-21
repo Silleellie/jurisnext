@@ -18,12 +18,14 @@ class NextTitlePrediction(Task):
 
     templates = {
         0: PromptTarget(
-            input_prompt="Predict the next element of the following sequence:\n"
+            input_prompt="DirectNTP:\n\n"
+                         "Predict the next element of the following sequence:\n"
                          "{}",
             target_text="{}"
         ),
         1: PromptTarget(
-            input_prompt="Previous titles:\n"
+            input_prompt="DirectNTP:\n\n"
+                         "Previous titles:\n"
                          "{}",
             target_text="{}"
         )
@@ -88,13 +90,15 @@ class BoolNTP(Task):
 
     templates = {
         0: PromptTarget(
-            input_prompt="Given the following title sequences:\n"
+            input_prompt="BoolNTP:\n\n"
+                         "Given the following title sequences:\n"
                          "{}\n\n"
                          "Is this the next title? {}",
             target_text="{}"
         ),
         1: PromptTarget(
-            input_prompt="Previous titles:\n"
+            input_prompt="BoolNTP:\n\n"
+                         "Previous titles:\n"
                          "{}\n\n"
                          "Next title: {}",
             target_text="{}"
