@@ -4,12 +4,11 @@ import itertools
 
 import datasets
 import numpy as np
-import pandas as pd
 
 from tqdm import tqdm
-from transformers import AutoTokenizer, T5TokenizerFast
+from transformers import T5TokenizerFast
 
-from src import RANDOM_STATE, MODELS_DIR, INTERIM_DATA_DIR
+from src import RANDOM_STATE, MODELS_DIR
 from src.data.legal_dataset import LegalDataset
 from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.lm.t5.flan_t5 import FineTunedFlanT5
@@ -66,13 +65,10 @@ class SeqTrainer:
         # validation set remains the same and should NOT be sampled at each epoch, otherwise
         # results are not comparable
         self.model.eval()  # eval because the "tokenize" function select different tasks depending on the mode
-        sampled_val = validation_dataset.map(sample_sequence,
-                                             remove_columns=validation_dataset.column_names,
-                                             load_from_cache_file=False)
-        preprocessed_val = sampled_val.map(lambda x: self.model.tokenize(x,
-                                                                         self.cluster_label_mapper),
-                                           remove_columns=sampled_val.column_names,
-                                           load_from_cache_file=False)
+        preprocessed_val = validation_dataset.map(lambda x: self.model.tokenize(x,
+                                                                                self.cluster_label_mapper),
+                                                  remove_columns=validation_dataset.column_names,
+                                                  load_from_cache_file=False)
         preprocessed_val.set_format("torch")
 
         # ceil because we don't drop the last batch
@@ -94,7 +90,7 @@ class SeqTrainer:
                 break
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
-            sampled_train = train_dataset.map(sample_sequence,
+            sampled_train = train_dataset.map(LegalDataset.perform_sampling,
                                               remove_columns=train_dataset.column_names,
                                               load_from_cache_file=False,
                                               keep_in_memory=True)
@@ -175,14 +171,10 @@ class SeqTrainer:
         return val_loss / len(pbar_val)
 
     def evaluate(self, test_dataset: datasets.Dataset):
-
-        print("EVALUATION")
         self.model.eval()
-        sampled_test = test_dataset.map(sample_sequence,
-                                        remove_columns=test_dataset.column_names, load_from_cache_file=False)
-        preprocessed_test = sampled_test.map(lambda x: self.model.tokenize(x,
+        preprocessed_test = test_dataset.map(lambda x: self.model.tokenize(x,
                                                                            self.cluster_label_mapper),
-                                             remove_columns=sampled_test.column_names)
+                                             remove_columns=test_dataset.column_names)
         preprocessed_test.set_format("torch")
 
         total_n_batch = ceil(preprocessed_test.num_rows / self.eval_batch_size)
@@ -203,8 +195,8 @@ class SeqTrainer:
             if (i % ceil(total_n_batch / 100)) == 0:
                 pbar_test.set_description(f"Acc -> {(matches / (i * self.eval_batch_size)):.6f}")
 
-        print(matches / preprocessed_test.num_rows)
-
+        acc = matches / preprocessed_test.num_rows
+        return acc
 
 def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labels, device):
 
@@ -284,13 +276,8 @@ if __name__ == "__main__":
     eval_batch_size = 2
     device = "cuda:0"
 
-    dataset = load_dataset(os.path.join(ROOT_PATH, "src", "data", "hf_dataset_script"))
+    ds = LegalDataset.load_dataset()
+    dataset_dict = ds.get_hf_datasets()
+    all_unique_labels = ds.all_unique_labels
 
-    all_labels_occurrences = np.array([el
-                                       for split in dataset
-                                       for element in dataset[split]
-                                       for el in element["title_sequence"]])
-
-    all_unique_labels = np.unique(all_labels_occurrences)
-
-    flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labels, device)
+    flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset_dict, all_unique_labels, device)
