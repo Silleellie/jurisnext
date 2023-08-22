@@ -49,7 +49,18 @@ class LegalDataset:
 
     def __init__(self):
 
-        self.train_df, self.val_df, self.test_df = self._generate_splits_and_sample()
+    @cached_property
+    def all_unique_labels(self) -> np.ndarray[str]:
+        all_labels = self.train_df["title_sequence"].explode().tolist()
+        all_labels.extend(
+            self.val_df["input_title_sequence"].explode().tolist() +
+            self.val_df["immediate_next_title"].tolist()
+        )
+        for test_df in self.test_df_list:
+            all_labels.extend(
+                test_df["input_title_sequence"].explode().tolist() +
+                test_df["immediate_next_title"].tolist()
+            )
 
     def _generate_splits_and_sample(self):
 
