@@ -1,11 +1,14 @@
 import os
+import pickle
 import random
+from functools import cached_property
 from pathlib import Path
 from typing import Tuple, Dict
 
 import datasets
+import numpy as np
 import pandas as pd
-from datasets import Dataset
+from datasets import Dataset, NamedSplit
 from sklearn.model_selection import train_test_split
 
 from src import RAW_DATA_DIR, RANDOM_STATE, INTERIM_DATA_DIR, PROCESSED_DATA_DIR
@@ -45,9 +48,11 @@ class LegalDataset:
     cleaned_dataset_path: str = os.path.join(INTERIM_DATA_DIR, "cleaned_dataframe.pkl")
     train_path: str = os.path.join(PROCESSED_DATA_DIR, "train.pkl")
     val_path: str = os.path.join(PROCESSED_DATA_DIR, "validation.pkl")
-    test_path: str = os.path.join(PROCESSED_DATA_DIR, "test.pkl")
+    test_list_path: str = os.path.join(PROCESSED_DATA_DIR, "test_list.pkl")
 
-    def __init__(self):
+    def __init__(self, n_test_sets: int = 10):
+
+        self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_sets)
 
     @cached_property
     def all_unique_labels(self) -> np.ndarray[str]:
@@ -62,25 +67,29 @@ class LegalDataset:
                 test_df["immediate_next_title"].tolist()
             )
 
-    def _generate_splits_and_sample(self):
+        return pd.unique(all_labels)
+
+    def _generate_splits_and_sample(self, n_test_sets: int):
 
         print("Creating dataset splits...")
 
         # remove the splits to have a fresh start
         Path(self.train_path).unlink(missing_ok=True)
         Path(self.val_path).unlink(missing_ok=True)
-        Path(self.test_path).unlink(missing_ok=True)
+        Path(self.test_list_path).unlink(missing_ok=True)
 
         cleaned_dataset: pd.DataFrame = pd.read_pickle(self.cleaned_dataset_path)
         train_dataset, val_dataset, test_dataset = self._split_dataset(cleaned_dataset)
 
         train_dataset = self._group_dataset(train_dataset, to_sample=False)
         val_dataset = self._group_dataset(val_dataset, to_sample=True)
-        test_dataset = self._group_dataset(test_dataset, to_sample=True)
-        
+        test_dataset = [self._group_dataset(test_dataset, to_sample=True) for _ in range(n_test_sets)]
+
         train_dataset.to_pickle(self.train_path)
         val_dataset.to_pickle(self.val_path)
-        test_dataset.to_pickle(self.test_path)
+
+        with open(self.test_list_path, "wb") as f:
+            pickle.dump(test_dataset, f)
 
         return train_dataset, val_dataset, test_dataset
 
@@ -163,7 +172,10 @@ class LegalDataset:
             val_hf_dataset = Dataset.from_pandas(self.val_df, split=datasets.Split.VALIDATION, preserve_index=False)
             
         train_hf_ds = Dataset.from_pandas(self.train_df, split=datasets.Split.TRAIN, preserve_index=False)
-        test_hf_ds = Dataset.from_pandas(self.test_df, split=datasets.Split.TEST, preserve_index=False)
+        test_hf_ds_list = [
+            Dataset.from_pandas(test_df, split=NamedSplit(f"test_{i}"), preserve_index=False)
+            for i, test_df in enumerate(self.test_df_list)
+        ]
         
         # we create a dataset dict containing each split
         dataset_dict = {
@@ -172,7 +184,7 @@ class LegalDataset:
         if val_hf_dataset is not None:
             dataset_dict["validation"] = val_hf_dataset
         
-        dataset_dict["test"] = test_hf_ds
+        dataset_dict["test"] = test_hf_ds_list
         
         return dataset_dict
 
@@ -186,14 +198,16 @@ class LegalDataset:
         if any([
             not os.path.isfile(cls.train_path),
             not os.path.isfile(cls.val_path),
-            not os.path.isfile(cls.test_path)
+            not os.path.isfile(cls.test_list_path)
         ]):
             raise FileNotFoundError("Some splits are missing, the dataset can't be loaded! "
                                     "Instantiate this class with the proper constructor the first time you use it!")
 
         obj.train_df = pd.read_pickle(cls.train_path)
         obj.val_df = pd.read_pickle(cls.val_path)
-        obj.test_df = pd.read_pickle(cls.test_path)
+
+        with open(cls.test_list_path, "rb") as f:
+            obj.test_df_list = pickle.load(f)
 
         return obj
 
