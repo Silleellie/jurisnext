@@ -6,10 +6,10 @@ from sentence_transformers import util
 from torch.nn.utils.rnn import pad_sequence
 from transformers import T5ForConditionalGeneration, Adafactor
 
-from src.data.clustering import ClusterLabelMapper
+from src.model.clustering import ClusterLabelMapper
 from src.model.lm.t5.templates import DirectNTP, BoolNTP, ClusteredNTP, ClusteredNTPSideInfo, Task, DirectNTPSideInfo
 from src.model.sequence_classification.seq_models_interface import SeqClassification
-from src.sentence_encoders import SentenceEncoder
+from src.model.sentence_encoders import SentenceEncoder
 
 
 class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):

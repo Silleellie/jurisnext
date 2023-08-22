@@ -3,7 +3,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertForSequenceClassification
 
-from src.data.clustering import ClusterLabelMapper
+from src.model.clustering import ClusterLabelMapper
 from src.model.sequence_classification.seq_models_interface import SeqClassification
 
 

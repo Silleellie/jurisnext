@@ -1,25 +1,20 @@
 import os
-from collections import defaultdict
 from math import ceil
 import itertools
 
 import datasets
-import numpy
 import numpy as np
-from datasets import load_dataset
-from sklearn.utils import compute_class_weight
+import pandas as pd
 
 from tqdm import tqdm
 from transformers import AutoTokenizer, T5TokenizerFast
 
-from src import RANDOM_STATE, ROOT_PATH, MODELS_DIR
-from src.data.clustering import ClusterLabelMapper, KMeansAlg
-from src.data.dataset_map_fn import sample_sequence
+from src import RANDOM_STATE, MODELS_DIR, INTERIM_DATA_DIR
+from src.data.legal_dataset import LegalDataset
+from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.lm.t5.flan_t5 import FineTunedFlanT5
 from src.model.lm.t5.templates import ClusteredNTPSideInfo, DirectNTP, ClusteredNTP, DirectNTPSideInfo
-from src.model.sequence_classification.seq_models.bert import FineTunedBert
-from src.model.sequence_classification.seq_models.nli_deberta import FineTunedNliDeberta
-from src.sentence_encoders import SentenceEncoder, BertSentenceEncoder, SentenceTransformerEncoder
+from src.model.sentence_encoders import SentenceTransformerEncoder
 from src.utils import seed_everything
 
 

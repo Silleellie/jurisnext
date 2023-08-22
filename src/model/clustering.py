@@ -3,16 +3,15 @@ from abc import ABC, abstractmethod
 
 import os
 import pickle
-from typing import List, Iterable, Dict, Optional, Union
+from typing import Iterable, Optional, Union
 
 import numpy as np
-import torch
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn_extra.cluster import KMedoids
 
-from src import RAW_DATA_DIR, PROCESSED_DATA_DIR
-from src.sentence_encoders import SentenceEncoder, BertSentenceEncoder
+from src import RAW_DATA_DIR
+from src.model.sentence_encoders import SentenceEncoder, BertSentenceEncoder
 
 
 class ClusterAlg(ABC):

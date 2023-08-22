@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-from src.data.clustering import ClusterLabelMapper
+from src.model.clustering import ClusterLabelMapper
 
 
 # interface for all sequence classification models
