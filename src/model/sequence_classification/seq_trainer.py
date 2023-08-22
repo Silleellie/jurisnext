@@ -199,7 +199,6 @@ class SeqTrainer:
         return acc
 
 def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labels, device):
-
     clus_alg = KMeansAlg(
         n_clusters=200,
         random_state=42,
@@ -239,11 +238,11 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labe
 
     train = dataset["train"]
     val = dataset["validation"]
-    test = dataset["test"]
+    test_list = dataset["test"]
 
     trainer.train(train, val)
 
-    print("clustered ntp side info")
+    print("EVALUATION")
     trainer.model = FineTunedFlanT5.from_pretrained(trainer.output_path,
                                                     sentence_encoder=sent_encoder,
                                                     all_labels=all_unique_labels,
@@ -251,27 +250,51 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labe
                                                     device=device,
                                                     test_task=ClusteredNTPSideInfo())
 
+    print("clustered ntp side info")
+    all_acc = []
+    for i, test in enumerate(test_list):
+        print(f"Eval on {i}-th test set")
+        acc = trainer.evaluate(test)
+        all_acc.append(acc)
 
-    trainer.evaluate(test)
+    print(np.mean(all_acc))
 
     print("direct ntp")
     trainer.model.set_test_task(DirectNTP())
-    trainer.evaluate(test)
+    all_acc = []
+    for i, test in enumerate(test_list):
+        print(f"Eval on {i}-th test set")
+        acc = trainer.evaluate(test)
+        all_acc.append(acc)
+
+    print(np.mean(all_acc))
 
     print("direct ntp with side info")
     trainer.model.set_test_task(DirectNTPSideInfo())
-    trainer.evaluate(test)
+    all_acc = []
+    for i, test in enumerate(test_list):
+        print(f"Eval on {i}-th test set")
+        acc = trainer.evaluate(test)
+        all_acc.append(acc)
+
+    print(np.mean(all_acc))
 
     print("clustered ntp")
     trainer.model.set_test_task(ClusteredNTP())
-    trainer.evaluate(test)
+    all_acc = []
+    for i, test in enumerate(test_list):
+        print(f"Eval on {i}-th test set")
+        acc = trainer.evaluate(test)
+        all_acc.append(acc)
+
+    print(np.mean(all_acc))
 
 
 if __name__ == "__main__":
     seed_everything(RANDOM_STATE)
 
     # PARAMETERS
-    n_epochs = 20
+    n_epochs = 10
     batch_size = 4
     eval_batch_size = 2
     device = "cuda:0"
