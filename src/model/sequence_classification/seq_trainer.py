@@ -74,7 +74,7 @@ class SeqTrainer:
             # if no significant change happens to the loss after 10 epochs then early stopping
             if no_change_counter == 10:
                 print("Early stopping")
-                self.model.save_pretrained(self.output_path)
+                self.model.save_finetuned(self.output_path)
                 break
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
@@ -120,7 +120,7 @@ class SeqTrainer:
 
                     min_val_loss = val_loss
                     no_change_counter = 0
-                    self.model.save_pretrained(self.output_path)
+                    self.model.save_finetuned(self.output_path)
 
                 else:
                     no_change_counter += 1
@@ -230,12 +230,7 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labe
     trainer.train(train, val)
 
     print("EVALUATION")
-    trainer.model = FineTunedFlanT5.from_pretrained(trainer.output_path,
-                                                    sentence_encoder=sent_encoder,
-                                                    all_labels=all_unique_labels,
-                                                    tokenizer=tokenizer,
-                                                    device=device,
-                                                    test_task=ClusteredNTPSideInfo())
+    trainer.model = FineTunedFlanT5.load_finetuned(trainer.output_path)
 
     print("clustered ntp side info")
     all_acc = []
