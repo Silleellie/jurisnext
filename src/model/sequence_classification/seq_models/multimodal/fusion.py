@@ -59,9 +59,9 @@ class MultimodalFusion(PreTrainedModel):
 
         image_output_dim = h * w * c
 
-        ## COMPUTE EXPECTED OUTPUT DIMENSION FOR TEXT ENCODER ##
+        ## RETRIEVE EXPECTED OUTPUT DIMENSION FOR TEXT ENCODER ##
 
-        text_output_dim = self.config.text_encoder_params["hidden_size"] * 2
+        text_output_dim = self.text_encoder.expected_output_size
 
         self.output_dim = image_output_dim + text_output_dim
 
