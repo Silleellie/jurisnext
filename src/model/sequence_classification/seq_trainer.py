@@ -1,9 +1,9 @@
-import os
 from math import ceil
 import itertools
 
 import datasets
 import numpy as np
+from sklearn.utils import compute_class_weight
 
 from tqdm import tqdm
 from transformers import T5TokenizerFast
@@ -14,6 +14,8 @@ from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.lm.t5.flan_t5 import FineTunedFlanT5
 from src.model.lm.t5.templates import ClusteredNTPSideInfo, DirectNTP, ClusteredNTP, DirectNTPSideInfo
 from src.model.sentence_encoders import SentenceTransformerEncoder
+from src.model.sequence_classification.seq_models.multimodal import MultimodalFusionForSequenceClassification, \
+    MultimodalFusionConfig
 from src.utils import seed_everything
 
 
@@ -272,6 +274,75 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labe
     print(np.mean(all_acc))
 
 
+def multimodal_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labels, device):
+
+    clus_alg = KMeansAlg(
+        n_clusters=50,
+        random_state=42,
+        init="k-means++",
+        n_init="auto"
+    )
+
+    sent_encoder = SentenceTransformerEncoder(
+        device=device,
+    )
+
+    train = dataset["train"]
+    val = dataset["validation"]
+    test_list = dataset["test"]
+
+    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
+    # "smoothing" so that a weight can be calculated for labels which do not appear in the
+    # train set
+    all_train_labels_occurrences.extend(all_unique_labels)
+
+    cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
+    labels_weights = compute_class_weight(class_weight='balanced',
+                                          classes=np.unique(all_unique_labels),
+                                          y=all_train_labels_occurrences)
+
+    model = MultimodalFusionForSequenceClassification(
+        MultimodalFusionConfig(
+            image_encoder_params={
+                "input_dims": [1, 32, 64, 128, 64, 10],
+                "output_dims": [32, 64, 128, 64, 10, 5],
+                "kernel_sizes": [7, 5, 5, 5, 5, 1]
+            },
+            text_encoder_params={
+                "model_name": "nlpaueb/legal-bert-base-uncased",
+                "model_hidden_states_num": 4,
+                "hidden_size": 256
+            },
+            max_seq_len=100,
+            label2id={x: i for i, x in enumerate(all_unique_labels)},
+            id2label={i: x for i, x in enumerate(all_unique_labels)}
+        ),
+        'cuda:0',
+        labels_weights,
+        cluster_label_mapper=cluster_label
+    )
+
+    trainer = SeqTrainer(
+        model=model,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        all_labels=all_unique_labels,
+        eval_batch_size=eval_batch_size,
+        output_name=f"MultimodalFusion_{n_epochs}"
+    )
+
+    trainer.train(train, val)
+
+    print("EVALUATION")
+    trainer.model = MultimodalFusionForSequenceClassification.load_finetuned(trainer.output_path)
+
+    acc = []
+    for test in test_list:
+        acc.append(trainer.evaluate(test))
+    print(np.mean(acc))
+
+
 if __name__ == "__main__":
     seed_everything(RANDOM_STATE)
 
@@ -285,4 +356,7 @@ if __name__ == "__main__":
     dataset_dict = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
 
-    flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset_dict, all_unique_labels, device)
+    # uncomment the main to use (temporary)
+
+    # flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset_dict, all_unique_labels, device)
+    # multimodal_main(n_epochs, batch_size, eval_batch_size, dataset_dict, all_unique_labels, device)
