@@ -16,7 +16,7 @@ class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
 
     def __init__(self, config, sentence_encoder: SentenceEncoder, all_labels: np.ndarray, tokenizer, device,
                  num_return_sequences=5, max_new_tokens=50, num_beams=30, no_repeat_ngram_size=0, early_stopping=True,
-                 test_task: Task = DirectNTP()):
+                 test_task: Task = DirectNTP(), cluster_label_mapper: ClusterLabelMapper = None):
 
         T5ForConditionalGeneration.__init__(self, config)
 
@@ -36,7 +36,8 @@ class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
         SeqClassification.__init__(
             self,
             tokenizer=tokenizer,
-            optimizer=optimizer
+            optimizer=optimizer,
+            cluster_label_mapper=cluster_label_mapper
         )
 
         self.num_return_sequences = num_return_sequences
@@ -69,20 +70,20 @@ class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
     def set_test_task(self, test_task: Task):
         self.test_task = test_task
 
-    def tokenize(self, sample, fit_label_cluster_mapper: ClusterLabelMapper = None):
+    def tokenize(self, sample):
 
         title_sequence = sample["input_title_sequence"]
         next_title = sample["immediate_next_title"]
         rel_keywords_sequence = sample["input_keywords_sequence"]
         train_task_list = self.task_list
 
-        if fit_label_cluster_mapper:
+        if self.cluster_label_mapper:
             train_task_list = self.task_list + self.cluster_task_list
 
         task = random.choice(train_task_list) if self.training else self.test_task
 
         input_text, target_text = task(title_sequence, next_title,
-                                       cluster_mapper=fit_label_cluster_mapper,
+                                       cluster_mapper=self.cluster_label_mapper,
                                        rel_keywords_seq=rel_keywords_sequence)
 
         encoded_sequence = self.tokenizer(text=input_text, text_target=target_text, truncation=True)

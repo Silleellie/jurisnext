@@ -17,14 +17,16 @@ class FineTunedNliDeberta(DebertaV2ForSequenceClassification, SeqClassification)
                  config,
                  all_unique_labels: np.ndarray,
                  tokenizer,
-                 validation_mini_batch_size: int = 16):
+                 validation_mini_batch_size: int = 16,
+                 cluster_label_mapper: ClusterLabelMapper = None):
 
         DebertaV2ForSequenceClassification.__init__(self, config)
 
         SeqClassification.__init__(
             self,
             tokenizer=tokenizer,
-            optimizer=torch.optim.AdamW(list(self.parameters()), lr=2e-5)
+            optimizer=torch.optim.AdamW(list(self.parameters()), lr=2e-5),
+            cluster_label_mapper=cluster_label_mapper
         )
 
         self.all_unique_labels = all_unique_labels
@@ -32,11 +34,11 @@ class FineTunedNliDeberta(DebertaV2ForSequenceClassification, SeqClassification)
         self.template = "Next title paragraph is {}"
         self.validation_mini_batch_size = validation_mini_batch_size
 
-    def tokenize(self, sample, fit_label_cluster_mapper: ClusterLabelMapper = None):
+    def tokenize(self, sample):
 
-        if fit_label_cluster_mapper is not None:
-            immediate_next_cluster = fit_label_cluster_mapper.get_clusters_from_labels(sample["immediate_next_title"])
-            next_candidate_titles = fit_label_cluster_mapper.get_labels_from_clusters(immediate_next_cluster)
+        if self.cluster_label_mapper is not None:
+            immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
+            next_candidate_titles = self.cluster_label_mapper.get_labels_from_clusters(immediate_next_cluster)
             text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
         else:
             next_candidate_titles = self.all_unique_labels

@@ -24,7 +24,6 @@ class SeqTrainer:
                  batch_size,
                  model,
                  all_labels: np.ndarray,
-                 cluster_label_mapper: ClusterLabelMapper = None,
                  device='cuda:0',
                  eval_batch_size=None,
                  num_workers=4,
@@ -37,7 +36,6 @@ class SeqTrainer:
         self.eval_batch_size = eval_batch_size if eval_batch_size is not None else batch_size
         self.num_workers = num_workers
         self.device = device
-        self.cluster_label_mapper = cluster_label_mapper
 
         # output name
         if output_name is None:
@@ -45,28 +43,18 @@ class SeqTrainer:
 
         self.output_path = os.path.join(MODELS_DIR, output_name)
 
-        self.labels_map = None
-        self.possible_labels_from_clusters = None
-
-    def _train_clusters(self, train_dataset: datasets.Dataset):
-
-        # retrieve all unique labels which appear in train set
-        flat_train_labels = itertools.chain.from_iterable(train_dataset["title_sequence"])
-        unique_train_labels = np.unique(np.fromiter(flat_train_labels, dtype=object)).astype(str)
-
-        # fit the cluster label mapper with train labels and all labels which should be clustered (both are unique)
-        self.cluster_label_mapper.fit(unique_train_labels, self.all_labels)
-
     def train(self, train_dataset: datasets.Dataset, validation_dataset: datasets.Dataset = None):
 
-        if self.cluster_label_mapper is not None:
-            self._train_clusters(train_dataset)
+        if self.model.cluster_label_mapper is not None:
+            # retrieve all unique labels which appear in train set
+            flat_train_labels = itertools.chain.from_iterable(train_dataset["title_sequence"])
+            unique_train_labels = np.unique(np.fromiter(flat_train_labels, dtype=object)).astype(str)
+            self.model._train_clusters(unique_train_labels, self.all_labels)
 
         # validation set remains the same and should NOT be sampled at each epoch, otherwise
         # results are not comparable
         self.model.eval()  # eval because the "tokenize" function select different tasks depending on the mode
-        preprocessed_val = validation_dataset.map(lambda x: self.model.tokenize(x,
-                                                                                self.cluster_label_mapper),
+        preprocessed_val = validation_dataset.map(self.model.tokenize,
                                                   remove_columns=validation_dataset.column_names,
                                                   load_from_cache_file=False)
         preprocessed_val.set_format("torch")
@@ -94,8 +82,7 @@ class SeqTrainer:
                                               remove_columns=train_dataset.column_names,
                                               load_from_cache_file=False,
                                               keep_in_memory=True)
-            preprocessed_train = sampled_train.map(lambda x: self.model.tokenize(x,
-                                                                                 self.cluster_label_mapper),
+            preprocessed_train = sampled_train.map(self.model.tokenize,
                                                    remove_columns=sampled_train.column_names,
                                                    load_from_cache_file=False,
                                                    keep_in_memory=True)
@@ -172,8 +159,7 @@ class SeqTrainer:
 
     def evaluate(self, test_dataset: datasets.Dataset):
         self.model.eval()
-        preprocessed_test = test_dataset.map(lambda x: self.model.tokenize(x,
-                                                                           self.cluster_label_mapper),
+        preprocessed_test = test_dataset.map(self.model.tokenize,
                                              remove_columns=test_dataset.column_names)
         preprocessed_test.set_format("torch")
 
@@ -198,6 +184,7 @@ class SeqTrainer:
         acc = matches / preprocessed_test.num_rows
         return acc
 
+
 def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labels, device):
     clus_alg = KMeansAlg(
         n_clusters=200,
@@ -210,6 +197,8 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labe
         device=device,
     )
 
+    cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
     tokenizer = T5TokenizerFast.from_pretrained("google/flan-t5-small")
     model = FineTunedFlanT5.from_pretrained(
         "google/flan-t5-small",
@@ -217,7 +206,8 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labe
         all_labels=all_unique_labels,
         tokenizer=tokenizer,
         device=device,
-        test_task=ClusteredNTPSideInfo()
+        test_task=ClusteredNTPSideInfo(),
+        cluster_label_mapper=cluster_label
     )
 
     new_words = ['<', '>']
@@ -225,14 +215,11 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, dataset, all_unique_labe
     tokenizer.add_tokens(new_words)
     model.resize_token_embeddings(len(tokenizer))
 
-    cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
-
     trainer = SeqTrainer(
         model=model,
         n_epochs=n_epochs,
         batch_size=batch_size,
         all_labels=all_unique_labels,
-        cluster_label_mapper=cluster_label,
         eval_batch_size=eval_batch_size,
     )
 

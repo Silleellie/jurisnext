@@ -10,24 +10,25 @@ from src.model.sequence_classification.seq_models_interface import SeqClassifica
 # maybe consider composition rather than multiple inheritance
 class FineTunedBert(BertForSequenceClassification, SeqClassification):
 
-    def __init__(self, config, labels_weights: np.ndarray, tokenizer, device):
+    def __init__(self, config, labels_weights: np.ndarray, tokenizer, device, cluster_label_mapper: ClusterLabelMapper = None):
 
         BertForSequenceClassification.__init__(self, config)
 
         SeqClassification.__init__(
             self,
             tokenizer=tokenizer,
-            optimizer=torch.optim.AdamW(list(self.parameters()), lr=2e-5)
+            optimizer=torch.optim.AdamW(list(self.parameters()), lr=2e-5),
+            cluster_label_mapper=cluster_label_mapper
         )
 
         self.to(device)
         self.labels_weights = torch.from_numpy(labels_weights).float().to(device)
 
-    def tokenize(self, sample, fit_label_cluster_mapper: ClusterLabelMapper = None):
+    def tokenize(self, sample):
 
-        if fit_label_cluster_mapper is not None:
+        if self.cluster_label_mapper is not None:
 
-            immediate_next_cluster = fit_label_cluster_mapper.get_clusters_from_labels(sample["immediate_next_title"])
+            immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
             text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
 
             output = self.tokenizer(text,
