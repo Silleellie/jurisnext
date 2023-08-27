@@ -1,10 +1,11 @@
 import random
+from typing import Union
 
 import numpy as np
 import torch
 from sentence_transformers import util
 from torch.nn.utils.rnn import pad_sequence
-from transformers import T5ForConditionalGeneration, Adafactor
+from transformers import T5ForConditionalGeneration, Adafactor, T5Tokenizer, T5TokenizerFast
 
 from src.model.clustering import ClusterLabelMapper
 from src.model.next_title_prediction.ntp_models.lm.t5.templates import DirectNTP, BoolNTP, ClusteredNTP, \
@@ -17,9 +18,19 @@ class NextTitleFlanT5(NextTitlePredictor):
 
     model_class = T5ForConditionalGeneration
 
-    def __init__(self, model: T5ForConditionalGeneration, sentence_encoder: SentenceEncoder, all_labels: np.ndarray,
-                 tokenizer, device, num_return_sequences=5, max_new_tokens=50, num_beams=30, no_repeat_ngram_size=0,
-                 early_stopping=True, test_task: Task = DirectNTP(), cluster_label_mapper: ClusterLabelMapper = None):
+    def __init__(self,
+                 model: T5ForConditionalGeneration,
+                 sentence_encoder: SentenceEncoder,
+                 all_labels: np.ndarray,
+                 tokenizer: Union[T5Tokenizer, T5TokenizerFast],
+                 num_return_sequences: int = 5,
+                 max_new_tokens: int = 50,
+                 num_beams: int = 30,
+                 no_repeat_ngram_size: int = 0,
+                 early_stopping: bool = True,
+                 test_task: Task = DirectNTP(),
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 device: str = "cpu"):
 
         optimizer = Adafactor(
             list(model.parameters()),
@@ -34,8 +45,7 @@ class NextTitleFlanT5(NextTitlePredictor):
             warmup_init=False
         )
 
-        NextTitlePredictor.__init__(
-            self,
+        super().__init__(
             model=model,
             tokenizer=tokenizer,
             optimizer=optimizer,

@@ -1,7 +1,9 @@
+from typing import Union
+
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from transformers import BertForSequenceClassification
+from transformers import BertForSequenceClassification, BertTokenizer, BertTokenizerFast
 
 from src.model.clustering import ClusterLabelMapper
 from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
@@ -12,10 +14,14 @@ class NextTitleBert(NextTitlePredictor):
 
     model_class = BertForSequenceClassification
 
-    def __init__(self, model: BertForSequenceClassification, labels_weights: np.ndarray, tokenizer, device, cluster_label_mapper: ClusterLabelMapper = None):
+    def __init__(self,
+                 model: BertForSequenceClassification,
+                 labels_weights: np.ndarray,
+                 tokenizer: Union[BertTokenizer, BertTokenizerFast],
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 device: str = "cpu"):
 
-        NextTitlePredictor.__init__(
-            self,
+        super().__init__(
             model=model,
             tokenizer=tokenizer,
             optimizer=torch.optim.AdamW(list(model.parameters()), lr=2e-5),

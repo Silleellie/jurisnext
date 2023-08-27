@@ -1,9 +1,12 @@
 import os
 import pickle
 from abc import abstractmethod
+from typing import Union
 
 import numpy as np
 import torch
+import transformers.optimization
+from transformers import PreTrainedModel, PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from src.model.clustering import ClusterLabelMapper
 
@@ -13,7 +16,12 @@ class NextTitlePredictor:
 
     model_class = None
 
-    def __init__(self, model, tokenizer, optimizer, cluster_label_mapper: ClusterLabelMapper = None, device: str = "cuda:0"):
+    def __init__(self,
+                 model: PreTrainedModel,
+                 tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
+                 optimizer: Union[torch.optim.Optimizer, transformers.optimization.Optimizer],
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 device: str = "cuda:0"):
 
         self.model = model
         self.tokenizer = tokenizer

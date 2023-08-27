@@ -1,11 +1,12 @@
 import itertools
 import random
 from math import ceil
+from typing import Union
 
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from transformers import DebertaV2ForSequenceClassification
+from transformers import DebertaV2ForSequenceClassification, DebertaV2Tokenizer, DebertaV2TokenizerFast
 
 from src.model.clustering import ClusterLabelMapper
 from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
@@ -18,13 +19,12 @@ class NextTitleNliDeberta(NextTitlePredictor):
     def __init__(self,
                  model: DebertaV2ForSequenceClassification,
                  all_unique_labels: np.ndarray,
-                 tokenizer,
+                 tokenizer: Union[DebertaV2Tokenizer, DebertaV2TokenizerFast],
                  validation_mini_batch_size: int = 16,
                  cluster_label_mapper: ClusterLabelMapper = None,
                  device: str = 'cuda:0'):
 
-        NextTitlePredictor.__init__(
-            self,
+        super().__init__(
             model=model,
             tokenizer=tokenizer,
             optimizer=torch.optim.AdamW(list(model.parameters()), lr=2e-5),
@@ -34,7 +34,7 @@ class NextTitleNliDeberta(NextTitlePredictor):
 
         self.all_unique_labels = all_unique_labels
 
-        self.template = "Next title paragraph is {}"
+        self.template = "Next paragraph title is {}"
         self.validation_mini_batch_size = validation_mini_batch_size
 
     def tokenize(self, sample):

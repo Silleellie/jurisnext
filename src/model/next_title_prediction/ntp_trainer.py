@@ -3,6 +3,8 @@ from math import ceil
 import itertools
 
 import gc
+from typing import Optional
+
 import torch
 import datasets
 import numpy as np
@@ -30,14 +32,14 @@ from src.utils import seed_everything
 class SeqTrainer:
 
     def __init__(self,
-                 n_epochs,
-                 batch_size,
+                 n_epochs: int,
+                 batch_size: int,
                  model: NextTitlePredictor,
                  all_labels: np.ndarray,
-                 device='cuda:0',
-                 eval_batch_size=None,
-                 num_workers=4,
-                 output_name=None):
+                 device: str = 'cuda:0',
+                 eval_batch_size: Optional[int] = None,
+                 num_workers: int = 4,
+                 output_name: Optional[str] = None):
 
         self.model = model
         self.n_epochs = n_epochs

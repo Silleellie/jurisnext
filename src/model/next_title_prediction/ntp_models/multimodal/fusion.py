@@ -5,6 +5,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedModel, PretrainedConfig
 
+from src.model.clustering import ClusterLabelMapper
 from src.model.next_title_prediction.ntp_models.multimodal.encoders import CNNEncoder, LSTMEncoder
 from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
 
@@ -88,7 +89,7 @@ class MultimodalFusionForSequenceClassification(MultimodalFusion):
 
     def __init__(self, config: MultimodalFusionConfig):
 
-        MultimodalFusion.__init__(self, config=config)
+        super().__init__(config=config)
 
         self.head_module = torch.nn.Linear(self.output_dim, len(self.config.label2id))
         self.parameters_to_update.extend(self.head_module.parameters())
@@ -105,12 +106,15 @@ class NextTitleMultimodalFusion(NextTitlePredictor):
 
     model_class = MultimodalFusionForSequenceClassification
 
-    def __init__(self, model: MultimodalFusionForSequenceClassification, labels_weights, cluster_label_mapper=None, device: str = "cuda:0"):
+    def __init__(self,
+                 model: MultimodalFusionForSequenceClassification,
+                 labels_weights: np.ndarray,
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 device: str = "cuda:0"):
 
         self.labels_weights = torch.from_numpy(labels_weights).to(torch.float32).to(device)
 
-        NextTitlePredictor.__init__(
-            self,
+        super().__init__(
             model=model,
             tokenizer=AutoTokenizer.from_pretrained(model.config.text_encoder_params["model_name"]),
             optimizer=torch.optim.AdamW(model.parameters_to_update, lr=2e-5),
@@ -192,7 +196,6 @@ class NextTitleMultimodalFusion(NextTitlePredictor):
             input_dict["labels"] = batch["labels"].to(self.device).flatten()
 
         return input_dict
-
 
     def train_step(self, batch):
         output = self(batch)
