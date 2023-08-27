@@ -4,24 +4,25 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import BertForSequenceClassification
 
 from src.model.clustering import ClusterLabelMapper
-from src.model.sequence_classification.seq_models_interface import SeqClassification
+from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
 
 
 # maybe consider composition rather than multiple inheritance
-class FineTunedBert(BertForSequenceClassification, SeqClassification):
+class NextTitleBert(NextTitlePredictor):
 
-    def __init__(self, config, labels_weights: np.ndarray, tokenizer, device, cluster_label_mapper: ClusterLabelMapper = None):
+    model_class = BertForSequenceClassification
 
-        BertForSequenceClassification.__init__(self, config)
+    def __init__(self, model: BertForSequenceClassification, labels_weights: np.ndarray, tokenizer, device, cluster_label_mapper: ClusterLabelMapper = None):
 
-        SeqClassification.__init__(
+        NextTitlePredictor.__init__(
             self,
+            model=model,
             tokenizer=tokenizer,
-            optimizer=torch.optim.AdamW(list(self.parameters()), lr=2e-5),
-            cluster_label_mapper=cluster_label_mapper
+            optimizer=torch.optim.AdamW(list(model.parameters()), lr=2e-5),
+            cluster_label_mapper=cluster_label_mapper,
+            device=device
         )
 
-        self.to(device)
         self.labels_weights = torch.from_numpy(labels_weights).float().to(device)
 
     def tokenize(self, sample):
@@ -90,4 +91,4 @@ class FineTunedBert(BertForSequenceClassification, SeqClassification):
 
         acc = (predictions == truth).sum()
 
-        return acc, val_loss
+        return acc.item(), val_loss

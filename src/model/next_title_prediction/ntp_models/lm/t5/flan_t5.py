@@ -7,21 +7,22 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import T5ForConditionalGeneration, Adafactor
 
 from src.model.clustering import ClusterLabelMapper
-from src.model.lm.t5.templates import DirectNTP, BoolNTP, ClusteredNTP, ClusteredNTPSideInfo, Task, DirectNTPSideInfo
-from src.model.sequence_classification.seq_models_interface import SeqClassification
+from src.model.next_title_prediction.ntp_models.lm.t5.templates import DirectNTP, BoolNTP, ClusteredNTP, \
+    ClusteredNTPSideInfo, Task, DirectNTPSideInfo
 from src.model.sentence_encoders import SentenceEncoder
+from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
 
 
-class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
+class NextTitleFlanT5(NextTitlePredictor):
 
-    def __init__(self, config, sentence_encoder: SentenceEncoder, all_labels: np.ndarray, tokenizer, device,
-                 num_return_sequences=5, max_new_tokens=50, num_beams=30, no_repeat_ngram_size=0, early_stopping=True,
-                 test_task: Task = DirectNTP(), cluster_label_mapper: ClusterLabelMapper = None):
+    model_class = T5ForConditionalGeneration
 
-        T5ForConditionalGeneration.__init__(self, config)
+    def __init__(self, model: T5ForConditionalGeneration, sentence_encoder: SentenceEncoder, all_labels: np.ndarray,
+                 tokenizer, device, num_return_sequences=5, max_new_tokens=50, num_beams=30, no_repeat_ngram_size=0,
+                 early_stopping=True, test_task: Task = DirectNTP(), cluster_label_mapper: ClusterLabelMapper = None):
 
         optimizer = Adafactor(
-            list(self.parameters()),
+            list(model.parameters()),
             lr=1e-3,
             eps=(1e-30, 1e-3),
             clip_threshold=1.0,
@@ -33,11 +34,13 @@ class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
             warmup_init=False
         )
 
-        SeqClassification.__init__(
+        NextTitlePredictor.__init__(
             self,
+            model=model,
             tokenizer=tokenizer,
             optimizer=optimizer,
-            cluster_label_mapper=cluster_label_mapper
+            cluster_label_mapper=cluster_label_mapper,
+            device=device
         )
 
         self.num_return_sequences = num_return_sequences
@@ -64,8 +67,6 @@ class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
 
         # for test we only use one task
         self.test_task = test_task
-
-        self.to(device)
 
     def set_test_task(self, test_task: Task):
         self.test_task = test_task
@@ -124,7 +125,7 @@ class FineTunedFlanT5(T5ForConditionalGeneration, SeqClassification):
         target_text = batch.pop("immediate_next_title")
         output = self(**batch)
 
-        beam_outputs = self.generate(
+        beam_outputs = self.model.generate(
             input_ids=batch["input_ids"],
             attention_mask=batch["attention_mask"],
             max_new_tokens=self.max_new_tokens,

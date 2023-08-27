@@ -8,25 +8,28 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import DebertaV2ForSequenceClassification
 
 from src.model.clustering import ClusterLabelMapper
-from src.model.sequence_classification.seq_models_interface import SeqClassification
+from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
 
 
-class FineTunedNliDeberta(DebertaV2ForSequenceClassification, SeqClassification):
+class NextTitleNliDeberta(NextTitlePredictor):
+
+    model_class = DebertaV2ForSequenceClassification
 
     def __init__(self,
-                 config,
+                 model: DebertaV2ForSequenceClassification,
                  all_unique_labels: np.ndarray,
                  tokenizer,
                  validation_mini_batch_size: int = 16,
-                 cluster_label_mapper: ClusterLabelMapper = None):
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 device: str = 'cuda:0'):
 
-        DebertaV2ForSequenceClassification.__init__(self, config)
-
-        SeqClassification.__init__(
+        NextTitlePredictor.__init__(
             self,
+            model=model,
             tokenizer=tokenizer,
-            optimizer=torch.optim.AdamW(list(self.parameters()), lr=2e-5),
-            cluster_label_mapper=cluster_label_mapper
+            optimizer=torch.optim.AdamW(list(model.parameters()), lr=2e-5),
+            cluster_label_mapper=cluster_label_mapper,
+            device=device
         )
 
         self.all_unique_labels = all_unique_labels

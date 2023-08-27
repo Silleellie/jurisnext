@@ -5,9 +5,8 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedModel, PretrainedConfig
 
-from src.model.clustering import ClusterLabelMapper
-from src.model.sequence_classification.seq_models.multimodal.encoders import CNNEncoder, LSTMEncoder
-from src.model.sequence_classification.seq_models_interface import SeqClassification
+from src.model.next_title_prediction.ntp_models.multimodal.encoders import CNNEncoder, LSTMEncoder
+from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
 
 
 class MultimodalFusionConfig(PretrainedConfig):
@@ -59,7 +58,7 @@ class MultimodalFusion(PreTrainedModel):
 
         image_output_dim = h * w * c
 
-        ## RETRIEVE EXPECTED OUTPUT DIMENSION FOR TEXT ENCODER ##
+        ## COMPUTE EXPECTED OUTPUT DIMENSION FOR TEXT ENCODER ##
 
         text_output_dim = self.text_encoder.expected_output_size
 
@@ -85,27 +84,41 @@ class MultimodalFusion(PreTrainedModel):
         return multimodal_features
 
 
-class MultimodalFusionForSequenceClassification(MultimodalFusion, SeqClassification):
+class MultimodalFusionForSequenceClassification(MultimodalFusion):
 
-    def __init__(self, config: MultimodalFusionConfig, device, labels_weights: np.ndarray, cluster_label_mapper: ClusterLabelMapper = None):
+    def __init__(self, config: MultimodalFusionConfig):
 
         MultimodalFusion.__init__(self, config=config)
 
         self.head_module = torch.nn.Linear(self.output_dim, len(self.config.label2id))
         self.parameters_to_update.extend(self.head_module.parameters())
 
-        SeqClassification.__init__(
-            self,
-            tokenizer=AutoTokenizer.from_pretrained(self.config.text_encoder_params["model_name"]),
-            optimizer=torch.optim.AdamW(self.parameters_to_update, lr=2e-5),
-            cluster_label_mapper=cluster_label_mapper
-        )
+    def forward(self, x: Dict[str, Union[torch.Tensor, List[str]]]) -> torch.Tensor:
+
+        multimodal_features = MultimodalFusion.forward(self, x)
+        output = self.head_module(multimodal_features)
+
+        return output
+
+
+class NextTitleMultimodalFusion(NextTitlePredictor):
+
+    model_class = MultimodalFusionForSequenceClassification
+
+    def __init__(self, model: MultimodalFusionForSequenceClassification, labels_weights, cluster_label_mapper=None, device: str = "cuda:0"):
 
         self.labels_weights = torch.from_numpy(labels_weights).to(torch.float32).to(device)
-        self.to(device)
+
+        NextTitlePredictor.__init__(
+            self,
+            model=model,
+            tokenizer=AutoTokenizer.from_pretrained(model.config.text_encoder_params["model_name"]),
+            optimizer=torch.optim.AdamW(model.parameters_to_update, lr=2e-5),
+            cluster_label_mapper=cluster_label_mapper,
+            device=device
+        )
 
     def tokenize(self, sample):
-
         """
         Note: the tokenize function also creates the encoded image representation in this case differently from
         other sequence classification models
@@ -163,7 +176,6 @@ class MultimodalFusionForSequenceClassification(MultimodalFusion, SeqClassificat
         return input_dict
 
     def prepare_input(self, batch):
-
         input_dict = {}
 
         input_dict["image"] = batch["image"].to(self.device).float()
@@ -181,8 +193,8 @@ class MultimodalFusionForSequenceClassification(MultimodalFusion, SeqClassificat
 
         return input_dict
 
-    def train_step(self, batch):
 
+    def train_step(self, batch):
         output = self(batch)
         truth = batch["labels"]
 
@@ -196,7 +208,6 @@ class MultimodalFusionForSequenceClassification(MultimodalFusion, SeqClassificat
 
     @torch.no_grad()
     def valid_step(self, batch):
-
         output = self(batch)
         truth: torch.Tensor = batch["labels"]
 
@@ -211,10 +222,3 @@ class MultimodalFusionForSequenceClassification(MultimodalFusion, SeqClassificat
         acc = (predictions == truth).sum()
 
         return acc.item(), val_loss
-
-    def forward(self, x: Dict[str, Union[torch.Tensor, List[str]]]) -> torch.Tensor:
-
-        multimodal_features = MultimodalFusion.forward(self, x)
-        output = self.head_module(multimodal_features)
-
-        return output
