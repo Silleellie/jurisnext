@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import BertForSequenceClassification, BertConfig
 
 from src.model.clustering import ClusterLabelMapper
-from src.model.next_title_prediction.ntp_models_interface import NTPModelHF, NTPConfig
+from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig
 
 
 class NTPBertConfig(BertConfig, NTPConfig):

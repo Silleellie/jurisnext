@@ -24,7 +24,7 @@ from src.model.next_title_prediction.ntp_models.multimodal.fusion import NTPMult
 from src.model.next_title_prediction.ntp_models.nli_deberta import NTPNliDeberta
 from src.model.next_title_prediction.ntp_models.lm import DirectNTP, DirectNTPSideInfo, \
     ClusteredNTP, ClusteredNTPSideInfo
-from src.model.next_title_prediction.ntp_models_interface import NTPModel
+from src.model.next_title_prediction.ntp_models_abtract import NTPModel
 from src.utils import seed_everything
 
 

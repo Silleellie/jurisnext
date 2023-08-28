@@ -10,7 +10,7 @@ from transformers import T5ForConditionalGeneration, Adafactor, T5Config, Genera
 from src.model.clustering import ClusterLabelMapper
 from src.model.next_title_prediction.ntp_models.lm.t5.templates import DirectNTP, BoolNTP, Task, DirectNTPSideInfo
 from src.model.sentence_encoders import SentenceEncoder, SentenceTransformerEncoder
-from src.model.next_title_prediction.ntp_models_interface import NTPConfig, NTPModelHF
+from src.model.next_title_prediction.ntp_models_abtract import NTPConfig, NTPModelHF
 
 
 class NTPT5Config(NTPConfig, T5Config):

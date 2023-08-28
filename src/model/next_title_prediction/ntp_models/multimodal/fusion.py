@@ -8,7 +8,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedModel, PretrainedConfig
 
 from src.model.next_title_prediction.ntp_models.multimodal.encoders import CNNEncoder, LSTMEncoder
-from src.model.next_title_prediction.ntp_models_interface import NTPModel, NTPConfig
+from src.model.next_title_prediction.ntp_models_abtract import NTPModel, NTPConfig
 
 
 class MultimodalFusionConfig(PretrainedConfig, NTPConfig):

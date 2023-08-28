@@ -9,7 +9,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import DebertaV2ForSequenceClassification, DebertaConfig
 
 from src.model.clustering import ClusterLabelMapper
-from src.model.next_title_prediction.ntp_models_interface import NTPConfig, NTPModelHF
+from src.model.next_title_prediction.ntp_models_abtract import NTPConfig, NTPModelHF
 
 
 class NTPNliDebertaConfig(DebertaConfig, NTPConfig):
