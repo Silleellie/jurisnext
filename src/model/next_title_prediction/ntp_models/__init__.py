@@ -1,4 +1,4 @@
 from .lm import *
 from .multimodal import *
-from .bert import NextTitleBert
-from .nli_deberta import NextTitleNliDeberta
+from .bert import NTPBert
+from .nli_deberta import NTPNliDeberta

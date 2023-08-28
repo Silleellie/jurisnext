@@ -1,1 +1,1 @@
-from .fusion import MultimodalFusionConfig, MultimodalFusionForSequenceClassification, NextTitleMultimodalFusion
+from .fusion import MultimodalFusionConfig, MultimodalFusionForSequenceClassification, NTPMultimodalFusion

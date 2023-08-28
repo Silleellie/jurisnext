@@ -1,2 +1,2 @@
-from .flan_t5 import NextTitleFlanT5
-from .templates import DirectNTP, DirectNTPSideInfo, ClusteredNTP, ClusteredNTPSideInfo
+from .flan_t5 import NTPFlanT5
+from .templates import DirectNTP, BoolNTP, DirectNTPSideInfo, ClusteredNTP, ClusteredNTPSideInfo
