@@ -192,21 +192,3 @@ class NTPT5(NTPModelHF):
              for j, truth in enumerate(target_text)])
 
         return matches, val_loss
-
-
-if __name__ == "__main__":
-
-    a = NTPT5Config.from_pretrained("google/flan-t5-small",
-                                    training_tasks=[
-                                            DirectNTP(),
-                                            BoolNTP(["a", "b", "c"]),
-                                            DirectNTPSideInfo()
-                                        ],
-                                    all_unique_labels=["a", "b", "c"],
-                                    device="cuda:0")
-
-    a.save_pretrained("aaaa")
-
-    c = NTPT5Config.from_pretrained("aaaa")
-
-    print("we")
