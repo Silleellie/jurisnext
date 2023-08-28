@@ -13,7 +13,7 @@ from src.model.sentence_encoders import SentenceEncoder, SentenceTransformerEnco
 from src.model.next_title_prediction.ntp_models_interface import NTPConfig, NTPModelHF
 
 
-class NTPFlanT5Config(NTPConfig, T5Config):
+class NTPT5Config(NTPConfig, T5Config):
 
     def __init__(self,
                  training_tasks: List[Task] = None,
@@ -71,10 +71,10 @@ class NTPFlanT5Config(NTPConfig, T5Config):
         return super_dict
 
 
-class NTPFlanT5(NTPModelHF):
+class NTPT5(NTPModelHF):
 
     model_class = T5ForConditionalGeneration
-    config_class = NTPFlanT5Config
+    config_class = NTPT5Config
 
     def __init__(self,
                  pretrained_model_or_pth: str = 'google/flan-t5-small',
@@ -196,17 +196,17 @@ class NTPFlanT5(NTPModelHF):
 
 if __name__ == "__main__":
 
-    a = NTPFlanT5Config.from_pretrained("google/flan-t5-small",
-                                        training_tasks=[
+    a = NTPT5Config.from_pretrained("google/flan-t5-small",
+                                    training_tasks=[
                                             DirectNTP(),
                                             BoolNTP(["a", "b", "c"]),
                                             DirectNTPSideInfo()
                                         ],
-                                        all_unique_labels=["a", "b", "c"],
-                                        device="cuda:0")
+                                    all_unique_labels=["a", "b", "c"],
+                                    device="cuda:0")
 
     a.save_pretrained("aaaa")
 
-    c = NTPFlanT5Config.from_pretrained("aaaa")
+    c = NTPT5Config.from_pretrained("aaaa")
 
     print("we")

@@ -15,7 +15,7 @@ from tqdm import tqdm
 from src import RANDOM_STATE, MODELS_DIR
 from src.data.legal_dataset import LegalDataset
 from src.model.clustering import ClusterLabelMapper, KMeansAlg
-from src.model.next_title_prediction.ntp_models import NTPFlanT5, BoolNTP
+from src.model.next_title_prediction.ntp_models import NTPT5, BoolNTP
 from src.model.sentence_encoders import SentenceTransformerEncoder
 from src.model.next_title_prediction.ntp_models.bert import NTPBert
 from src.model.next_title_prediction.ntp_models.multimodal import MultimodalFusionForSequenceClassification, \
@@ -34,7 +34,7 @@ class SeqTrainer:
                  n_epochs: int,
                  batch_size: int,
                  ntp_model: NTPModel,
-                 all_labels: list,
+                 all_labels: np.ndarray,
                  device: str = 'cuda:0',
                  eval_batch_size: Optional[int] = None,
                  num_workers: int = 4,
@@ -198,7 +198,7 @@ class SeqTrainer:
         return acc
 
 
-def flan_t5_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_cluster_alg=True):
+def t5_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_cluster_alg=True):
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
@@ -221,7 +221,7 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_clu
 
         clus_alg = KMeansAlg(
             n_clusters=200,
-            random_state=42,
+            random_state=RANDOM_STATE,
             init="k-means++",
             n_init="auto"
         )
@@ -230,14 +230,14 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_clu
         test_task = ClusteredNTPSideInfo()
         train_tasks.extend([ClusteredNTP(), ClusteredNTPSideInfo()])
 
-    model_ntp = NTPFlanT5(
+    model_ntp = NTPT5(
         "google/flan-t5-small",
         sentence_encoder=sent_encoder,
         cluster_label_mapper=cluster_label,
 
         training_tasks=train_tasks,
         test_task=test_task,
-        all_unique_labels=all_unique_labels,
+        all_unique_labels=list(all_unique_labels),
         device='cuda:0'
     )
 
@@ -264,7 +264,7 @@ def flan_t5_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_clu
     torch.cuda.empty_cache()
 
     print("EVALUATION")
-    trainer.model = NTPFlanT5.load(trainer.output_path)
+    trainer.model = NTPT5.load(trainer.output_path)
 
     # check which task yield better results
     for task in train_tasks:
@@ -291,7 +291,7 @@ def multimodal_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_
 
         clus_alg = KMeansAlg(
             n_clusters=50,
-            random_state=42,
+            random_state=RANDOM_STATE,
             init="k-means++",
             n_init="auto"
         )
@@ -312,7 +312,7 @@ def multimodal_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_
     all_train_labels_occurrences.extend(all_unique_labels)
 
     labels_weights = compute_class_weight(class_weight='balanced',
-                                          classes=np.unique(all_unique_labels),
+                                          classes=all_unique_labels,
                                           y=all_train_labels_occurrences)
 
     model = MultimodalFusionForSequenceClassification(
@@ -331,7 +331,7 @@ def multimodal_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_
             max_seq_len=100,
             label2id={x: i for i, x in enumerate(all_unique_labels)},
             id2label={i: x for i, x in enumerate(all_unique_labels)},
-            labels_weights=labels_weights,
+            labels_weights=list(labels_weights),
             device='cuda:0'
         ),
     )
@@ -375,7 +375,7 @@ def bert_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_cluste
 
         clus_alg = KMeansAlg(
             n_clusters=50,
-            random_state=42,
+            random_state=RANDOM_STATE,
             init="k-means++",
             n_init="auto"
         )
@@ -396,7 +396,7 @@ def bert_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_cluste
     all_train_labels_occurrences.extend(all_unique_labels)
 
     labels_weights = compute_class_weight(class_weight='balanced',
-                                          classes=np.unique(all_unique_labels),
+                                          classes=all_unique_labels,
                                           y=all_train_labels_occurrences)
 
     ntp_model = NTPBert(
@@ -444,7 +444,7 @@ def deberta_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_clu
     if use_cluster_alg:
         clus_alg = KMeansAlg(
             n_clusters=50,
-            random_state=42,
+            random_state=RANDOM_STATE,
             init="k-means++",
             n_init="auto"
         )
@@ -503,7 +503,7 @@ if __name__ == "__main__":
     eval_batch_size = 1
     device = "cuda:0"
 
-    flan_t5_main(n_epochs, batch_size, eval_batch_size, device)
+    t5_main(n_epochs, batch_size, eval_batch_size, device)
     # multimodal_main(n_epochs, batch_size, eval_batch_size, device)
     # bert_main(n_epochs, batch_size, eval_batch_size, device)
     # deberta_main(n_epochs, batch_size, eval_batch_size, device)
