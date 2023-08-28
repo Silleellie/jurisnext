@@ -1,6 +1,8 @@
+from __future__ import annotations
 import random
 from abc import ABC, abstractmethod
 from collections import namedtuple
+from typing import List
 
 import numpy as np
 
@@ -12,6 +14,19 @@ class Task(ABC):
     @abstractmethod
     def __call__(self, title_sequence, target_title, **kwargs):
         raise NotImplementedError
+
+    def to_json(self):
+        return repr(self), self.__dict__
+
+    def __repr__(self):
+        return self.__class__.__name__
+
+    @classmethod
+    def from_eval(cls, task_classname: str, task_parameters: dict) -> Task:
+        eval_class = eval(task_classname)
+        evaluated_task = eval_class(**task_parameters)
+
+        return evaluated_task
 
 
 class DirectNTP(Task):
@@ -105,8 +120,11 @@ class BoolNTP(Task):
         )
     }
 
-    def __init__(self, all_titles: np.ndarray):
-        self.all_titles = all_titles
+    def __init__(self, all_titles: List[str]):
+        self.all_titles = np.array(all_titles)
+
+    def to_json(self):
+        return repr(self), {"all_titles": list(self.all_titles)}
 
     def __call__(self, title_sequence, target_title, **kwargs):
         # random select of string separator for titles sequence and the prompt to use

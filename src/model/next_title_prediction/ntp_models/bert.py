@@ -1,35 +1,70 @@
-from typing import Union
+from __future__ import annotations
+from typing import Optional, Dict, Any
 
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from transformers import BertForSequenceClassification, BertTokenizer, BertTokenizerFast
+from transformers import BertForSequenceClassification, BertConfig
 
 from src.model.clustering import ClusterLabelMapper
-from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
+from src.model.next_title_prediction.ntp_models_interface import NTPModelHF, NTPConfig
+
+
+class NTPBertConfig(BertConfig, NTPConfig):
+
+    def __init__(self,
+                 labels_weights: list = None,
+                 device: str = "cpu",
+                 **kwargs):
+        BertConfig.__init__(self, **kwargs)
+        NTPConfig.__init__(self, device)
+
+        self.labels_weights = labels_weights
+        if labels_weights is not None:
+            self.labels_weights = torch.from_numpy(np.array(labels_weights)).float().to(device)
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any], **kwargs):
+
+        labels_weights: Optional[torch.Tensor] = kwargs.pop("labels_weights", None)
+        device: Optional[str] = kwargs.pop("device", None)
+
+        if labels_weights is not None:
+            config_dict["labels_weights"] = labels_weights
+
+        if device is not None:
+            config_dict["device"] = device
+
+        return super().from_dict(config_dict, **kwargs)
+
+    # to make __repr__ work we need to convert the tensor to a json serializable format
+    def to_dict(self) -> Dict[str, Any]:
+        super_dict = super().to_dict()
+
+        if isinstance(super_dict["labels_weights"], torch.Tensor):
+            super_dict["labels_weights"] = super_dict["labels_weights"].tolist()
+
+        return super_dict
 
 
 # maybe consider composition rather than multiple inheritance
-class NextTitleBert(NextTitlePredictor):
-
+class NTPBert(NTPModelHF):
     model_class = BertForSequenceClassification
+    config_class = NTPBertConfig
 
     def __init__(self,
-                 model: BertForSequenceClassification,
-                 labels_weights: np.ndarray,
-                 tokenizer: Union[BertTokenizer, BertTokenizerFast],
+                 pretrained_model_or_pth: str = 'bert-base-uncased',
                  cluster_label_mapper: ClusterLabelMapper = None,
-                 device: str = "cpu"):
+                 **config_kwargs):
 
         super().__init__(
-            model=model,
-            tokenizer=tokenizer,
-            optimizer=torch.optim.AdamW(list(model.parameters()), lr=2e-5),
+            pretrained_model_or_pth=pretrained_model_or_pth,
             cluster_label_mapper=cluster_label_mapper,
-            device=device
+            **config_kwargs
         )
 
-        self.labels_weights = torch.from_numpy(labels_weights).float().to(device)
+    def get_suggested_optimizer(self):
+        return torch.optim.AdamW(list(self.model.parameters()), lr=2e-5)
 
     def tokenize(self, sample):
 
@@ -56,15 +91,17 @@ class NextTitleBert(NextTitlePredictor):
         input_dict = {}
 
         input_ids = pad_sequence(batch["input_ids"], batch_first=True, padding_value=self.tokenizer.pad_token_id)
-        token_type_ids = pad_sequence(batch["token_type_ids"], batch_first=True, padding_value=self.tokenizer.pad_token_id)
-        attention_mask = pad_sequence(batch["attention_mask"], batch_first=True, padding_value=self.tokenizer.pad_token_id)
+        token_type_ids = pad_sequence(batch["token_type_ids"], batch_first=True,
+                                      padding_value=self.tokenizer.pad_token_id)
+        attention_mask = pad_sequence(batch["attention_mask"], batch_first=True,
+                                      padding_value=self.tokenizer.pad_token_id)
 
-        input_dict["input_ids"] = input_ids.to(self.device)
-        input_dict["token_type_ids"] = token_type_ids.to(self.device)
-        input_dict["attention_mask"] = attention_mask.to(self.device)
+        input_dict["input_ids"] = input_ids.to(self.model.device)
+        input_dict["token_type_ids"] = token_type_ids.to(self.model.device)
+        input_dict["attention_mask"] = attention_mask.to(self.model.device)
 
         if "labels" in batch:
-            input_dict["labels"] = batch["labels"].to(self.device).flatten()
+            input_dict["labels"] = batch["labels"].to(self.model.device).flatten()
 
         return input_dict
 
@@ -76,7 +113,7 @@ class NextTitleBert(NextTitlePredictor):
         loss = torch.nn.functional.cross_entropy(
             output.logits,
             truth,
-            weight=self.labels_weights
+            weight=self.config.labels_weights
         )
 
         return output.logits, loss
@@ -92,7 +129,7 @@ class NextTitleBert(NextTitlePredictor):
         val_loss = torch.nn.functional.cross_entropy(
             output.logits,
             truth,
-            weight=self.labels_weights
+            weight=self.config.labels_weights
         )
 
         acc = (predictions == truth).sum()

@@ -1,34 +1,90 @@
-from typing import Dict, Union, List
+import os
+import pickle
+from typing import Dict, Union, List, Any, Optional
 
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedModel, PretrainedConfig
 
-from src.model.clustering import ClusterLabelMapper
 from src.model.next_title_prediction.ntp_models.multimodal.encoders import CNNEncoder, LSTMEncoder
-from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
+from src.model.next_title_prediction.ntp_models_interface import NTPModel, NTPConfig
 
 
-class MultimodalFusionConfig(PretrainedConfig):
+class MultimodalFusionConfig(PretrainedConfig, NTPConfig):
 
     def __init__(
             self,
             image_encoder_params: dict = None,
             text_encoder_params: dict = None,
             max_seq_len: int = 100,
+            labels_weights: list = None,
+            device: str = 'cpu',
             **kwargs
     ):
-        super().__init__(**kwargs)
+
+        PretrainedConfig.__init__(self, **kwargs)
+        NTPConfig.__init__(self, device)
 
         self.image_encoder_params = image_encoder_params
         self.text_encoder_params = text_encoder_params
         self.max_seq_len = max_seq_len
 
+        self.labels_weights = labels_weights
+        if self.labels_weights is not None:
+            self.labels_weights = torch.from_numpy(np.array(labels_weights)).float().to(device)
+
+    @classmethod
+    def from_pretrained(cls,
+                        pretrained_model_name_or_path: Union[str, os.PathLike],
+                        cache_dir: Optional[Union[str, os.PathLike]] = None,
+                        force_download: bool = False,
+                        local_files_only: bool = False,
+                        token: Optional[Union[str, bool]] = None,
+                        revision: str = "main",
+                        **kwargs):
+
+        inst, unused_kwargs = super().from_pretrained(
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            **kwargs
+        )
+
+        # when loaded from path, labels weights is transformed already into a tensor by init,
+        # that's why we need this further check
+        if isinstance(inst.labels_weights, list):
+            inst.labels_weights = torch.from_numpy(np.array(inst.labels_weights)).float().to(inst.device)
+
+        return inst, unused_kwargs
+
+    def save_pretrained(self,
+                        save_directory: Union[str, os.PathLike],
+                        push_to_hub: bool = False,
+                        **kwargs):
+
+        self.labels_weights = self.labels_weights.tolist()
+
+        super().save_pretrained(save_directory=save_directory,
+                                push_to_hub=push_to_hub,
+                                **kwargs)
+
+        self.labels_weights = torch.from_numpy(np.array(self.labels_weights)).float().to(self.device)
+
+    # to make __repr__ work we need to convert the tensor to a json serializable format
+    def to_dict(self) -> Dict[str, Any]:
+        super_dict = super().to_dict()
+
+        if isinstance(super_dict["labels_weights"], torch.Tensor):
+            super_dict["labels_weights"] = super_dict["labels_weights"].tolist()
+
+        return super_dict
+
 
 class MultimodalFusion(PreTrainedModel):
-
-    config_class = MultimodalFusionConfig
 
     def __init__(self, config: MultimodalFusionConfig):
 
@@ -102,25 +158,48 @@ class MultimodalFusionForSequenceClassification(MultimodalFusion):
         return output
 
 
-class NextTitleMultimodalFusion(NextTitlePredictor):
+class NTPMultimodalFusion(NTPModel):
 
     model_class = MultimodalFusionForSequenceClassification
 
-    def __init__(self,
-                 model: MultimodalFusionForSequenceClassification,
-                 labels_weights: np.ndarray,
-                 cluster_label_mapper: ClusterLabelMapper = None,
-                 device: str = "cuda:0"):
-
-        self.labels_weights = torch.from_numpy(labels_weights).to(torch.float32).to(device)
+    def __init__(self, model: MultimodalFusionForSequenceClassification, cluster_label_mapper=None):
 
         super().__init__(
             model=model,
             tokenizer=AutoTokenizer.from_pretrained(model.config.text_encoder_params["model_name"]),
-            optimizer=torch.optim.AdamW(model.parameters_to_update, lr=2e-5),
-            cluster_label_mapper=cluster_label_mapper,
-            device=device
+            cluster_label_mapper=cluster_label_mapper),
+
+    def get_suggested_optimizer(self):
+        return torch.optim.AdamW(self.model.parameters_to_update, lr=2e-5)
+
+    def save(self, save_path):
+
+        self.model.save_pretrained(save_path)
+
+        if self.cluster_label_mapper is not None:
+            with open(os.path.join(save_path, 'cluster_label_mapper.pkl'), "wb") as f:
+                pickle.dump(self.cluster_label_mapper, f)
+
+    @classmethod
+    def load(cls, save_path):
+
+        model = cls.model_class.from_pretrained(
+            pretrained_model_name_or_path=save_path
         )
+
+        cluster_label_mapper_path = os.path.join(save_path, 'cluster_label_mapper.pkl')
+
+        cluster_label_mapper = None
+        if os.path.isfile(cluster_label_mapper_path):
+            with open(cluster_label_mapper_path, "rb") as f:
+                cluster_label_mapper = pickle.load(f)
+
+        new_inst = cls(
+            model=model,
+            cluster_label_mapper=cluster_label_mapper
+        )
+
+        return new_inst
 
     def tokenize(self, sample):
         """
@@ -182,18 +261,18 @@ class NextTitleMultimodalFusion(NextTitlePredictor):
     def prepare_input(self, batch):
         input_dict = {}
 
-        input_dict["image"] = batch["image"].to(self.device).float()
+        input_dict["image"] = batch["image"].to(self.model.device).float()
         input_dict["text"] = {}
 
         input_dict["text"]["input_ids"] = pad_sequence(batch["input_ids"], batch_first=True,
-                                                       padding_value=self.tokenizer.pad_token_id).to(self.device)
+                                                       padding_value=self.tokenizer.pad_token_id).to(self.model.device)
         input_dict["text"]["token_type_ids"] = pad_sequence(batch["token_type_ids"], batch_first=True,
-                                                            padding_value=self.tokenizer.pad_token_id).to(self.device)
+                                                            padding_value=self.tokenizer.pad_token_id).to(self.model.device)
         input_dict["text"]["attention_mask"] = pad_sequence(batch["attention_mask"], batch_first=True,
-                                                            padding_value=self.tokenizer.pad_token_id).to(self.device)
+                                                            padding_value=self.tokenizer.pad_token_id).to(self.model.device)
 
         if "labels" in batch:
-            input_dict["labels"] = batch["labels"].to(self.device).flatten()
+            input_dict["labels"] = batch["labels"].to(self.model.device).flatten()
 
         return input_dict
 
@@ -204,7 +283,7 @@ class NextTitleMultimodalFusion(NextTitlePredictor):
         loss = torch.nn.functional.cross_entropy(
             output,
             truth,
-            weight=self.labels_weights
+            weight=self.config.labels_weights
         )
 
         return output, loss
@@ -219,7 +298,7 @@ class NextTitleMultimodalFusion(NextTitlePredictor):
         val_loss = torch.nn.functional.cross_entropy(
             output,
             truth,
-            weight=self.labels_weights
+            weight=self.config.labels_weights
         )
 
         acc = (predictions == truth).sum()

@@ -1,41 +1,54 @@
 import itertools
 import random
 from math import ceil
-from typing import Union
+from typing import List
 
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from transformers import DebertaV2ForSequenceClassification, DebertaV2Tokenizer, DebertaV2TokenizerFast
+from transformers import DebertaV2ForSequenceClassification, DebertaConfig
 
 from src.model.clustering import ClusterLabelMapper
-from src.model.next_title_prediction.ntp_models_interface import NextTitlePredictor
+from src.model.next_title_prediction.ntp_models_interface import NTPConfig, NTPModelHF
 
 
-class NextTitleNliDeberta(NextTitlePredictor):
-
-    model_class = DebertaV2ForSequenceClassification
+class NTPNliDebertaConfig(DebertaConfig, NTPConfig):
 
     def __init__(self,
-                 model: DebertaV2ForSequenceClassification,
-                 all_unique_labels: np.ndarray,
-                 tokenizer: Union[DebertaV2Tokenizer, DebertaV2TokenizerFast],
+                 template: str = "Next paragraph title is {}",
                  validation_mini_batch_size: int = 16,
-                 cluster_label_mapper: ClusterLabelMapper = None,
-                 device: str = 'cuda:0'):
+                 all_unique_labels: List[str] = None,
+                 device: str = "cpu",
+                 **kwargs):
+        DebertaConfig.__init__(self, **kwargs)
+        NTPConfig.__init__(self, device)
 
-        super().__init__(
-            model=model,
-            tokenizer=tokenizer,
-            optimizer=torch.optim.AdamW(list(model.parameters()), lr=2e-5),
-            cluster_label_mapper=cluster_label_mapper,
-            device=device
-        )
-
+        self.validation_mini_batch_size = validation_mini_batch_size
+        self.template = template
         self.all_unique_labels = all_unique_labels
 
-        self.template = "Next paragraph title is {}"
-        self.validation_mini_batch_size = validation_mini_batch_size
+        if self.all_unique_labels is None:
+            self.all_unique_labels = []
+
+
+class NTPNliDeberta(NTPModelHF):
+
+    model_class = DebertaV2ForSequenceClassification
+    config_class = NTPNliDebertaConfig
+
+    def __init__(self,
+                 pretrained_model_or_pth: str = 'cross-encoder/nli-deberta-v3-xsmall',
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 **kwargs):
+
+        super().__init__(
+            pretrained_model_or_pth=pretrained_model_or_pth,
+            cluster_label_mapper=cluster_label_mapper,
+            **kwargs
+        )
+
+    def get_suggested_optimizer(self):
+        return torch.optim.AdamW(list(self.model.parameters()), lr=2e-5)
 
     def tokenize(self, sample):
 
@@ -44,7 +57,7 @@ class NextTitleNliDeberta(NextTitlePredictor):
             next_candidate_titles = self.cluster_label_mapper.get_labels_from_clusters(immediate_next_cluster)
             text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
         else:
-            next_candidate_titles = self.all_unique_labels
+            next_candidate_titles = np.array(self.config.all_unique_labels)
             text = ", ".join(sample["input_title_sequence"])
 
         label = sample["immediate_next_title"]
@@ -54,15 +67,15 @@ class NextTitleNliDeberta(NextTitlePredictor):
         if self.training:
 
             wrong_label = random.choice(next_candidate_titles[next_candidate_titles != label])
-            encoded_sequence = self.tokenizer([(text, self.template.format(label)),
-                                               (text, self.template.format(wrong_label))],
+            encoded_sequence = self.tokenizer([[text, self.config.template.format(label)],
+                                               [text, self.config.template.format(wrong_label)]],
                                               truncation=True)
 
             encoded_sequence["labels"] = [label_ent, label_contr]
 
         else:
 
-            encoded_sequence = self.tokenizer([(text, self.template.format(candidate_title))
+            encoded_sequence = self.tokenizer([[text, self.config.template.format(candidate_title)]
                                                for candidate_title in next_candidate_titles],
                                               return_tensors='pt',
                                               padding=True,
@@ -93,23 +106,23 @@ class NextTitleNliDeberta(NextTitlePredictor):
             attention_mask = pad_sequence(flat_attention_mask, batch_first=True,
                                           padding_value=self.tokenizer.pad_token_id)
 
-            input_dict["input_ids"] = input_ids.to(self.device)
-            input_dict["token_type_ids"] = token_type_ids.to(self.device)
-            input_dict["attention_mask"] = attention_mask.to(self.device)
+            input_dict["input_ids"] = input_ids.to(self.model.device)
+            input_dict["token_type_ids"] = token_type_ids.to(self.model.device)
+            input_dict["attention_mask"] = attention_mask.to(self.model.device)
 
         else:
 
-            input_dict["input_ids"] = [x.to(self.device) for x in batch["input_ids"]]
-            input_dict["token_type_ids"] = [x.to(self.device) for x in batch["token_type_ids"]]
-            input_dict["attention_mask"] = [x.to(self.device) for x in batch["attention_mask"]]
+            input_dict["input_ids"] = [x.to(self.model.device) for x in batch["input_ids"]]
+            input_dict["token_type_ids"] = [x.to(self.model.device) for x in batch["token_type_ids"]]
+            input_dict["attention_mask"] = [x.to(self.model.device) for x in batch["attention_mask"]]
 
         if "labels" in batch:
 
             if self.training:
                 flat_labels = batch["labels"].flatten()  # already a tensor
-                input_dict["labels"] = flat_labels.to(self.device)
+                input_dict["labels"] = flat_labels.to(self.model.device)
             else:
-                input_dict["labels"] = [x.to(self.device).long() for x in batch["labels"]]
+                input_dict["labels"] = [x.to(self.model.device).long() for x in batch["labels"]]
 
         return input_dict
 
@@ -131,7 +144,7 @@ class NextTitleNliDeberta(NextTitlePredictor):
     @torch.no_grad()
     def valid_step(self, batch):
 
-        mini_batch_size = self.validation_mini_batch_size
+        mini_batch_size = self.config.validation_mini_batch_size
 
         val_loss = 0
         acc = 0
