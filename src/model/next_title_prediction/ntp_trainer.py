@@ -2,33 +2,20 @@ import os
 from math import ceil
 import itertools
 
-import gc
 from typing import Optional
 
-import torch
 import datasets
 import numpy as np
-from sklearn.utils import compute_class_weight
 
 from tqdm import tqdm
 
-from src import RANDOM_STATE, MODELS_DIR
+from src import MODELS_DIR
 from src.data.legal_dataset import LegalDataset
-from src.model.clustering import ClusterLabelMapper, KMeansAlg
-from src.model.next_title_prediction.ntp_models import NTPT5, BoolNTP
-from src.model.sentence_encoders import SentenceTransformerEncoder
-from src.model.next_title_prediction.ntp_models.bert import NTPBert
-from src.model.next_title_prediction.ntp_models.multimodal import MultimodalFusionForSequenceClassification, \
-    MultimodalFusionConfig
-from src.model.next_title_prediction.ntp_models.multimodal.fusion import NTPMultimodalFusion
-from src.model.next_title_prediction.ntp_models.nli_deberta import NTPNliDeberta
-from src.model.next_title_prediction.ntp_models.lm import DirectNTP, DirectNTPSideInfo, \
-    ClusteredNTP, ClusteredNTPSideInfo
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel
 from src.utils import seed_everything
 
 
-class SeqTrainer:
+class NTPTrainer:
 
     def __init__(self,
                  n_epochs: int,
@@ -37,7 +24,6 @@ class SeqTrainer:
                  all_labels: np.ndarray,
                  device: str = 'cuda:0',
                  eval_batch_size: Optional[int] = None,
-                 num_workers: int = 4,
                  output_name: Optional[str] = None):
 
         self.ntp_model = ntp_model
@@ -45,7 +31,6 @@ class SeqTrainer:
         self.batch_size = batch_size
         self.all_labels = all_labels
         self.eval_batch_size = eval_batch_size if eval_batch_size is not None else batch_size
-        self.num_workers = num_workers
         self.device = device
 
         # output name
@@ -196,314 +181,3 @@ class SeqTrainer:
 
         acc = matches / preprocessed_test.num_rows
         return acc
-
-
-def t5_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_cluster_alg=True):
-    ds = LegalDataset.load_dataset()
-    dataset = ds.get_hf_datasets()
-    all_unique_labels = ds.all_unique_labels
-
-    cluster_label = None
-
-    train_tasks = [
-        DirectNTP(),
-        DirectNTPSideInfo(),
-        BoolNTP(list(all_unique_labels))
-    ]
-
-    sent_encoder = SentenceTransformerEncoder(
-        device=device,
-    )
-
-    test_task = DirectNTPSideInfo()
-
-    if use_cluster_alg:
-
-        clus_alg = KMeansAlg(
-            n_clusters=200,
-            random_state=RANDOM_STATE,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
-        test_task = ClusteredNTPSideInfo()
-        train_tasks.extend([ClusteredNTP(), ClusteredNTPSideInfo()])
-
-    model_ntp = NTPT5(
-        "google/flan-t5-small",
-        sentence_encoder=sent_encoder,
-        cluster_label_mapper=cluster_label,
-
-        training_tasks=train_tasks,
-        test_task=test_task,
-        all_unique_labels=list(all_unique_labels),
-        device='cuda:0'
-    )
-
-    new_words = ['<', '>']
-
-    model_ntp.tokenizer.add_tokens(new_words)
-    model_ntp.model.resize_token_embeddings(len(model_ntp.tokenizer))
-
-    trainer = SeqTrainer(
-        ntp_model=model_ntp,
-        n_epochs=n_epochs,
-        batch_size=batch_size,
-        all_labels=all_unique_labels,
-        eval_batch_size=eval_batch_size,
-    )
-
-    train = dataset["train"]
-    val = dataset["validation"]
-    test_list = dataset["test"]
-
-    trainer.train(train, val)
-
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    print("EVALUATION")
-    trainer.model = NTPT5.load(trainer.output_path)
-
-    # check which task yield better results
-    for task in train_tasks:
-
-        print(f"Evaluating task {repr(task)}")
-        trainer.model.set_test_task(task)
-        all_acc = []
-        for i, test in enumerate(test_list):
-            print(f"Eval on {i}-th test set")
-            acc = trainer.evaluate(test)
-            all_acc.append(acc)
-
-        print(np.mean(all_acc))
-
-
-def multimodal_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_cluster_alg=True):
-    ds = LegalDataset.load_dataset()
-    dataset = ds.get_hf_datasets()
-    all_unique_labels = ds.all_unique_labels
-
-    cluster_label = None
-
-    if use_cluster_alg:
-
-        clus_alg = KMeansAlg(
-            n_clusters=50,
-            random_state=RANDOM_STATE,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        sent_encoder = SentenceTransformerEncoder(
-            device=device,
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
-
-    train = dataset["train"]
-    val = dataset["validation"]
-    test_list = dataset["test"]
-
-    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
-    # "smoothing" so that a weight can be calculated for labels which do not appear in the
-    # train set
-    all_train_labels_occurrences.extend(all_unique_labels)
-
-    labels_weights = compute_class_weight(class_weight='balanced',
-                                          classes=all_unique_labels,
-                                          y=all_train_labels_occurrences)
-
-    model = MultimodalFusionForSequenceClassification(
-        MultimodalFusionConfig(
-            image_encoder_params={
-                "input_dims": [1, 32, 64, 128, 64, 10],
-                "output_dims": [32, 64, 128, 64, 10, 5],
-                "kernel_sizes": [7, 5, 5, 5, 5, 1]
-            },
-            text_encoder_params={
-                "model_name": "nlpaueb/legal-bert-base-uncased",
-                "model_hidden_states_num": 4,
-                "hidden_size": 256,
-                "directions_fusion_strat": "mean"
-            },
-            max_seq_len=100,
-            label2id={x: i for i, x in enumerate(all_unique_labels)},
-            id2label={i: x for i, x in enumerate(all_unique_labels)},
-            labels_weights=list(labels_weights),
-            device='cuda:0'
-        ),
-    )
-
-    model_ntp = NTPMultimodalFusion(
-        model=model,
-        cluster_label_mapper=cluster_label,
-    )
-
-    trainer = SeqTrainer(
-        ntp_model=model_ntp,
-        n_epochs=n_epochs,
-        batch_size=batch_size,
-        all_labels=all_unique_labels,
-        eval_batch_size=eval_batch_size,
-        output_name=f"MultimodalFusion_{n_epochs}"
-    )
-
-    trainer.train(train, val)
-
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    print("EVALUATION")
-    trainer.model = NTPMultimodalFusion.load(trainer.output_path)
-
-    acc = []
-    for test in test_list:
-        acc.append(trainer.evaluate(test))
-    print(np.mean(acc))
-
-
-def bert_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_cluster_alg=False):
-    ds = LegalDataset.load_dataset()
-    dataset = ds.get_hf_datasets()
-    all_unique_labels = ds.all_unique_labels
-
-    cluster_label = None
-
-    if use_cluster_alg:
-
-        clus_alg = KMeansAlg(
-            n_clusters=50,
-            random_state=RANDOM_STATE,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        sent_encoder = SentenceTransformerEncoder(
-            device=device,
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
-
-    train = dataset["train"]
-    val = dataset["validation"]
-    test_list = dataset["test"]
-
-    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
-    # "smoothing" so that a weight can be calculated for labels which do not appear in the
-    # train set
-    all_train_labels_occurrences.extend(all_unique_labels)
-
-    labels_weights = compute_class_weight(class_weight='balanced',
-                                          classes=all_unique_labels,
-                                          y=all_train_labels_occurrences)
-
-    ntp_model = NTPBert(
-        'bert-base-uncased',
-        cluster_label_mapper=cluster_label,
-
-        problem_type="single_label_classification",
-        num_labels=len(all_unique_labels),
-        label2id={x: i for i, x in enumerate(all_unique_labels)},
-        id2label={i: x for i, x in enumerate(all_unique_labels)},
-
-        labels_weights=list(labels_weights),
-        device='cuda:0'
-    )
-
-    trainer = SeqTrainer(
-        ntp_model=ntp_model,
-        n_epochs=n_epochs,
-        batch_size=batch_size,
-        all_labels=all_unique_labels,
-        eval_batch_size=eval_batch_size
-    )
-
-    trainer.train(train, val)
-
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    print("EVALUATION")
-    trainer.model = NTPBert.load(trainer.output_path)
-
-    acc = []
-    for test in test_list:
-        acc.append(trainer.evaluate(test))
-    print(np.mean(acc))
-
-
-def deberta_main(n_epochs, batch_size, eval_batch_size, device="cuda:0", use_cluster_alg=False):
-    ds = LegalDataset.load_dataset()
-    dataset = ds.get_hf_datasets()
-    all_unique_labels = ds.all_unique_labels
-
-    cluster_label = None
-
-    if use_cluster_alg:
-        clus_alg = KMeansAlg(
-            n_clusters=50,
-            random_state=RANDOM_STATE,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        sent_encoder = SentenceTransformerEncoder(
-            device=device,
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
-
-    train = dataset["train"]
-    val = dataset["validation"]
-    test_list = dataset["test"]
-
-    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
-    # "smoothing" so that a weight can be calculated for labels which do not appear in the
-    # train set
-    all_train_labels_occurrences.extend(all_unique_labels)
-
-    ntp_model = NTPNliDeberta(
-        namepretrained_model_or_pth='cross-encoder/nli-deberta-v3-xsmall',
-        all_unique_labels=list(all_unique_labels),
-        cluster_label_mapper=cluster_label,
-        device='cuda:0'
-    )
-
-    trainer = SeqTrainer(
-        ntp_model=ntp_model,
-        n_epochs=n_epochs,
-        batch_size=batch_size,
-        all_labels=all_unique_labels,
-        eval_batch_size=eval_batch_size
-    )
-
-    trainer.train(train, val)
-
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    print("EVALUATION")
-    trainer.model = NTPNliDeberta.load(trainer.output_path)
-
-    acc = []
-    for test in test_list:
-        acc.append(trainer.evaluate(test))
-    print(np.mean(acc))
-
-
-if __name__ == "__main__":
-
-    seed_everything(RANDOM_STATE)
-
-    # PARAMETERS
-    n_epochs = 1
-    batch_size = 2
-    eval_batch_size = 1
-    device = "cuda:0"
-
-    t5_main(n_epochs, batch_size, eval_batch_size, device)
-    # multimodal_main(n_epochs, batch_size, eval_batch_size, device)
-    # bert_main(n_epochs, batch_size, eval_batch_size, device)
-    # deberta_main(n_epochs, batch_size, eval_batch_size, device)

@@ -1,3 +1,4 @@
+import gc
 import random
 from typing import List, Dict, Any
 
@@ -7,10 +8,15 @@ from sentence_transformers import util
 from torch.nn.utils.rnn import pad_sequence
 from transformers import T5ForConditionalGeneration, Adafactor, T5Config, GenerationConfig
 
-from src.model.clustering import ClusterLabelMapper
-from src.model.next_title_prediction.ntp_models.lm.t5.templates import DirectNTP, BoolNTP, Task, DirectNTPSideInfo
+from src import ExperimentConfig
+from src.data.legal_dataset import LegalDataset
+from src.model.clustering import ClusterLabelMapper, KMeansAlg
+from src.model.next_title_prediction.ntp_models.lm.t5.templates import DirectNTP, BoolNTP, Task, DirectNTPSideInfo, \
+    ClusteredNTPSideInfo, ClusteredNTP
+from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 from src.model.sentence_encoders import SentenceEncoder, SentenceTransformerEncoder
 from src.model.next_title_prediction.ntp_models_abtract import NTPConfig, NTPModelHF
+from src.utils import seed_everything
 
 
 class NTPT5Config(NTPConfig, T5Config):
@@ -192,3 +198,100 @@ class NTPT5(NTPModelHF):
              for j, truth in enumerate(target_text)])
 
         return matches, val_loss
+
+
+def t5_main():
+
+    n_epochs = ExperimentConfig.epochs
+    batch_size = ExperimentConfig.batch_size
+    eval_batch_size = ExperimentConfig.eval_batch_size
+    device = ExperimentConfig.device
+    use_cluster_alg = ExperimentConfig.use_cluster_alg
+
+    if ExperimentConfig.checkpoint is not None:
+        checkpoint = ExperimentConfig.checkpoint
+    else:
+        checkpoint = "google/flan-t5-small"
+
+    random_state = ExperimentConfig.random_state
+
+    seed_everything(random_state)
+
+    ds = LegalDataset.load_dataset()
+    dataset = ds.get_hf_datasets()
+    all_unique_labels = ds.all_unique_labels
+
+    cluster_label = None
+
+    train_tasks = [
+        DirectNTP(),
+        DirectNTPSideInfo(),
+        BoolNTP(list(all_unique_labels))
+    ]
+
+    sent_encoder = SentenceTransformerEncoder(
+        device=device,
+    )
+
+    test_task = DirectNTPSideInfo()
+
+    if use_cluster_alg:
+        clus_alg = KMeansAlg(
+            n_clusters=200,
+            random_state=random_state,
+            init="k-means++",
+            n_init="auto"
+        )
+
+        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+        test_task = ClusteredNTPSideInfo()
+        train_tasks.extend([ClusteredNTP(), ClusteredNTPSideInfo()])
+
+    model_ntp = NTPT5(
+        checkpoint,
+        sentence_encoder=sent_encoder,
+        cluster_label_mapper=cluster_label,
+
+        training_tasks=train_tasks,
+        test_task=test_task,
+        all_unique_labels=list(all_unique_labels),
+        device='cuda:0'
+    )
+
+    new_words = ['<', '>']
+
+    model_ntp.tokenizer.add_tokens(new_words)
+    model_ntp.model.resize_token_embeddings(len(model_ntp.tokenizer))
+
+    trainer = NTPTrainer(
+        ntp_model=model_ntp,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        all_labels=all_unique_labels,
+        eval_batch_size=eval_batch_size,
+    )
+
+    train = dataset["train"]
+    val = dataset["validation"]
+    test_list = dataset["test"]
+
+    trainer.train(train, val)
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    print("EVALUATION")
+    trainer.model = NTPT5.load(trainer.output_path)
+
+    # check which task yield better results
+    for task in train_tasks:
+
+        print(f"Evaluating task {repr(task)}")
+        trainer.model.set_test_task(task)
+        all_acc = []
+        for i, test in enumerate(test_list):
+            print(f"Eval on {i}-th test set")
+            acc = trainer.evaluate(test)
+            all_acc.append(acc)
+
+        print(np.mean(all_acc))

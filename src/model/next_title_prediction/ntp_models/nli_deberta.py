@@ -1,3 +1,4 @@
+import gc
 import itertools
 import random
 from math import ceil
@@ -8,8 +9,13 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import DebertaV2ForSequenceClassification, DebertaConfig
 
-from src.model.clustering import ClusterLabelMapper
+from src import ExperimentConfig
+from src.data.legal_dataset import LegalDataset
+from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.next_title_prediction.ntp_models_abtract import NTPConfig, NTPModelHF
+from src.model.next_title_prediction.ntp_trainer import NTPTrainer
+from src.model.sentence_encoders import SentenceTransformerEncoder
+from src.utils import seed_everything
 
 
 class NTPNliDebertaConfig(DebertaConfig, NTPConfig):
@@ -191,3 +197,78 @@ class NTPNliDeberta(NTPModelHF):
             val_loss += loss
 
         return acc, val_loss
+
+
+def nli_deberta_main():
+
+    n_epochs = ExperimentConfig.epochs
+    batch_size = ExperimentConfig.batch_size
+    eval_batch_size = ExperimentConfig.eval_batch_size
+    device = ExperimentConfig.device
+    use_cluster_alg = ExperimentConfig.use_cluster_alg
+
+    if ExperimentConfig.checkpoint is not None:
+        checkpoint = ExperimentConfig.checkpoint
+    else:
+        checkpoint = 'cross-encoder/nli-deberta-v3-xsmall'
+
+    random_state = ExperimentConfig.random_state
+
+    seed_everything(random_state)
+
+    ds = LegalDataset.load_dataset()
+    dataset = ds.get_hf_datasets()
+    all_unique_labels = ds.all_unique_labels
+
+    cluster_label = None
+
+    if use_cluster_alg:
+        clus_alg = KMeansAlg(
+            n_clusters=50,
+            random_state=random_state,
+            init="k-means++",
+            n_init="auto"
+        )
+
+        sent_encoder = SentenceTransformerEncoder(
+            device=device,
+        )
+
+        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
+    train = dataset["train"]
+    val = dataset["validation"]
+    test_list = dataset["test"]
+
+    ntp_model = NTPNliDeberta(
+        pretrained_model_or_pth=checkpoint,
+        all_unique_labels=list(all_unique_labels),
+        cluster_label_mapper=cluster_label,
+        device='cuda:0'
+    )
+
+    trainer = NTPTrainer(
+        ntp_model=ntp_model,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        all_labels=all_unique_labels,
+        eval_batch_size=eval_batch_size
+    )
+
+    trainer.train(train, val)
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    print("EVALUATION")
+    trainer.model = NTPNliDeberta.load(trainer.output_path)
+
+    acc = []
+    for test in test_list:
+        acc.append(trainer.evaluate(test))
+    print(np.mean(acc))
+
+
+if __name__ == "__main__":
+
+    nli_deberta_main()

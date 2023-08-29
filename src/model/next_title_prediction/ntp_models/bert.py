@@ -1,13 +1,21 @@
 from __future__ import annotations
+
+import gc
 from typing import Optional, Dict, Any
 
 import numpy as np
 import torch
+from sklearn.utils import compute_class_weight
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertForSequenceClassification, BertConfig
 
-from src.model.clustering import ClusterLabelMapper
+from src import ExperimentConfig
+from src.data.legal_dataset import LegalDataset
+from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig
+from src.model.next_title_prediction.ntp_trainer import NTPTrainer
+from src.model.sentence_encoders import SentenceTransformerEncoder
+from src.utils import seed_everything
 
 
 class NTPBertConfig(BertConfig, NTPConfig):
@@ -135,3 +143,93 @@ class NTPBert(NTPModelHF):
         acc = (predictions == truth).sum()
 
         return acc.item(), val_loss
+
+
+def bert_main():
+
+    n_epochs = ExperimentConfig.epochs
+    batch_size = ExperimentConfig.batch_size
+    eval_batch_size = ExperimentConfig.eval_batch_size
+    device = ExperimentConfig.device
+    use_cluster_alg = ExperimentConfig.use_cluster_alg
+
+    if ExperimentConfig.checkpoint is not None:
+        checkpoint = ExperimentConfig.checkpoint
+    else:
+        checkpoint = "bert-base-uncased"
+
+    random_state = ExperimentConfig.random_state
+
+    seed_everything(random_state)
+
+    ds = LegalDataset.load_dataset()
+    dataset = ds.get_hf_datasets()
+    all_unique_labels = ds.all_unique_labels
+
+    cluster_label = None
+
+    if use_cluster_alg:
+        clus_alg = KMeansAlg(
+            n_clusters=50,
+            random_state=random_state,
+            init="k-means++",
+            n_init="auto"
+        )
+
+        sent_encoder = SentenceTransformerEncoder(
+            device=device,
+        )
+
+        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
+    train = dataset["train"]
+    val = dataset["validation"]
+    test_list = dataset["test"]
+
+    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
+    # "smoothing" so that a weight can be calculated for labels which do not appear in the
+    # train set
+    all_train_labels_occurrences.extend(all_unique_labels)
+
+    labels_weights = compute_class_weight(class_weight='balanced',
+                                          classes=all_unique_labels,
+                                          y=all_train_labels_occurrences)
+
+    ntp_model = NTPBert(
+        checkpoint,
+        cluster_label_mapper=cluster_label,
+
+        problem_type="single_label_classification",
+        num_labels=len(all_unique_labels),
+        label2id={x: i for i, x in enumerate(all_unique_labels)},
+        id2label={i: x for i, x in enumerate(all_unique_labels)},
+
+        labels_weights=list(labels_weights),
+        device='cuda:0'
+    )
+
+    trainer = NTPTrainer(
+        ntp_model=ntp_model,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        all_labels=all_unique_labels,
+        eval_batch_size=eval_batch_size
+    )
+
+    trainer.train(train, val)
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    print("EVALUATION")
+    trainer.model = NTPBert.load(trainer.output_path)
+
+    acc = []
+    for test in test_list:
+        acc.append(trainer.evaluate(test))
+    print(np.mean(acc))
+
+
+if __name__ == "__main__":
+
+    bert_main()

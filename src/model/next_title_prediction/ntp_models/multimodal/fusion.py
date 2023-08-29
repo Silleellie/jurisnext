@@ -1,14 +1,22 @@
+import gc
 import os
 import pickle
 from typing import Dict, Union, List, Any, Optional
 
 import numpy as np
 import torch
+from sklearn.utils import compute_class_weight
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedModel, PretrainedConfig
 
+from src import ExperimentConfig
+from src.data.legal_dataset import LegalDataset
+from src.model.clustering import KMeansAlg, ClusterLabelMapper
 from src.model.next_title_prediction.ntp_models.multimodal.encoders import CNNEncoder, LSTMEncoder
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel, NTPConfig
+from src.model.next_title_prediction.ntp_trainer import NTPTrainer
+from src.model.sentence_encoders import SentenceTransformerEncoder
+from src.utils import seed_everything
 
 
 class MultimodalFusionConfig(PretrainedConfig, NTPConfig):
@@ -304,3 +312,94 @@ class NTPMultimodalFusion(NTPModel):
         acc = (predictions == truth).sum()
 
         return acc.item(), val_loss
+
+def multimodal_main():
+
+    n_epochs = ExperimentConfig.epochs
+    batch_size = ExperimentConfig.batch_size
+    eval_batch_size = ExperimentConfig.eval_batch_size
+    device = ExperimentConfig.device
+    use_cluster_alg = ExperimentConfig.use_cluster_alg
+    random_state = ExperimentConfig.random_state
+
+    seed_everything(random_state)
+
+    ds = LegalDataset.load_dataset()
+    dataset = ds.get_hf_datasets()
+    all_unique_labels = ds.all_unique_labels
+
+    cluster_label = None
+    if use_cluster_alg:
+        clus_alg = KMeansAlg(
+            n_clusters=50,
+            random_state=random_state,
+            init="k-means++",
+            n_init="auto"
+        )
+
+        sent_encoder = SentenceTransformerEncoder(
+            device=device,
+        )
+
+        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
+    train = dataset["train"]
+    val = dataset["validation"]
+    test_list = dataset["test"]
+
+    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
+    # "smoothing" so that a weight can be calculated for labels which do not appear in the
+    # train set
+    all_train_labels_occurrences.extend(all_unique_labels)
+
+    labels_weights = compute_class_weight(class_weight='balanced',
+                                          classes=all_unique_labels,
+                                          y=all_train_labels_occurrences)
+
+    model = MultimodalFusionForSequenceClassification(
+        MultimodalFusionConfig(
+            image_encoder_params={
+                "input_dims": [1, 32, 64, 128, 64, 10],
+                "output_dims": [32, 64, 128, 64, 10, 5],
+                "kernel_sizes": [7, 5, 5, 5, 5, 1]
+            },
+            text_encoder_params={
+                "model_name": "nlpaueb/legal-bert-base-uncased",
+                "model_hidden_states_num": 4,
+                "hidden_size": 256,
+                "directions_fusion_strat": "mean"
+            },
+            max_seq_len=100,
+            label2id={x: i for i, x in enumerate(all_unique_labels)},
+            id2label={i: x for i, x in enumerate(all_unique_labels)},
+            labels_weights=list(labels_weights),
+            device='cuda:0'
+        ),
+    )
+
+    model_ntp = NTPMultimodalFusion(
+        model=model,
+        cluster_label_mapper=cluster_label,
+    )
+
+    trainer = NTPTrainer(
+        ntp_model=model_ntp,
+        n_epochs=n_epochs,
+        batch_size=batch_size,
+        all_labels=all_unique_labels,
+        eval_batch_size=eval_batch_size,
+        output_name=f"MultimodalFusion_{n_epochs}"
+    )
+
+    trainer.train(train, val)
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    print("EVALUATION")
+    trainer.model = NTPMultimodalFusion.load(trainer.output_path)
+
+    acc = []
+    for test in test_list:
+        acc.append(trainer.evaluate(test))
+    print(np.mean(acc))
