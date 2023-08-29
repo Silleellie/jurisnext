@@ -191,13 +191,12 @@ class NTPT5(NTPModelHF):
         sim = util.cos_sim(encoded_preds, self.encoded_all_labels).cpu()
         mapped_predictions = self.config.all_unique_labels[sim.argmax(axis=1)]
 
+        # mapped predictions is 1d. What we want is to have an array of shape (batch_size x num_return sequences)
+        mapped_predictions = mapped_predictions.reshape((len(target_text), self.generation_config.num_return_sequences))
+
         val_loss = output.loss
 
-        matches = sum(
-            [truth in mapped_predictions[j * self.config.num_return_sequences:(j + 1) * self.config.num_return_sequences]
-             for j, truth in enumerate(target_text)])
-
-        return matches, val_loss
+        return mapped_predictions, target_text, val_loss
 
 
 def t5_main():

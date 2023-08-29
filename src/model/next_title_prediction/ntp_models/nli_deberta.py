@@ -93,6 +93,7 @@ class NTPNliDeberta(NTPModelHF):
             encoded_sequence["labels"][next_possible_titles_correct_idx] = label_ent
 
             encoded_sequence["labels"] = encoded_sequence["labels"].tolist()
+            encoded_sequence["text_labels"] = [candidate_title for candidate_title in next_candidate_titles]
 
         return encoded_sequence
 
@@ -129,6 +130,7 @@ class NTPNliDeberta(NTPModelHF):
                 input_dict["labels"] = flat_labels.to(self.model.device)
             else:
                 input_dict["labels"] = [x.to(self.model.device).long() for x in batch["labels"]]
+                input_dict["text_labels"] = batch["text_labels"]
 
         return input_dict
 
@@ -153,10 +155,11 @@ class NTPNliDeberta(NTPModelHF):
         mini_batch_size = self.config.validation_mini_batch_size
 
         val_loss = 0
-        acc = 0
         label_contr = self.config.label2id["contradiction"]
         label_ent = self.config.label2id["entailment"]
 
+        predictions = []
+        truths = []
         # we cycle through each sample of the batch, each sample has associated
         # (num_candidate_labels x pad_dim) input_ids, labels, attention_mask, etc.
         for i in range(len(batch["input_ids"])):
@@ -187,16 +190,19 @@ class NTPNliDeberta(NTPModelHF):
 
             # get index of label which is entailment in prediction tensor
             prediction_index: torch.Tensor = prob_label_is_true.argmax(0).item()
+            prediction_text = batch["text_labels"][i][prediction_index]
 
             # get index of label which is entailment in truth tensor
             truth_index = (truth == self.config.label2id["entailment"]).nonzero().item()
+            truth_text = batch["text_labels"][i][truth_index]
 
             # increment accuracy if they match
-            acc += 1 if prediction_index == truth_index else 0
+            predictions.append(prediction_text)
+            truths.append(truth_text)
 
             val_loss += loss
 
-        return acc, val_loss
+        return predictions, truths, val_loss
 
 
 def nli_deberta_main():
