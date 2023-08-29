@@ -294,7 +294,7 @@ class NTPMultimodalFusion(NTPModel):
             weight=self.config.labels_weights
         )
 
-        return output, loss
+        return loss
 
     @torch.no_grad()
     def valid_step(self, batch):

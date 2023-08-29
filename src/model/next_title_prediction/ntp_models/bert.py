@@ -124,7 +124,7 @@ class NTPBert(NTPModelHF):
             weight=self.config.labels_weights
         )
 
-        return output.logits, loss
+        return loss
 
     @torch.no_grad()
     def valid_step(self, batch):

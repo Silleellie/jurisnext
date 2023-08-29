@@ -96,7 +96,7 @@ class NTPTrainer:
                 optimizer.zero_grad()
 
                 prepared_input = self.ntp_model.prepare_input(batch)
-                output, loss = self.ntp_model.train_step(prepared_input)
+                loss = self.ntp_model.train_step(prepared_input)
 
                 loss.backward()
                 optimizer.step()

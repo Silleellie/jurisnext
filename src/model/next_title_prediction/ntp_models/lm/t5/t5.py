@@ -171,7 +171,7 @@ class NTPT5(NTPModelHF):
 
         output = self(**batch)
 
-        return output.logits, output.loss
+        return output.loss
 
     @torch.no_grad()
     def valid_step(self, batch):

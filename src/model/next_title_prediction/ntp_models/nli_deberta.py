@@ -145,7 +145,7 @@ class NTPNliDeberta(NTPModelHF):
             batch["labels"].float()
         )
 
-        return output.logits, loss
+        return loss
 
     @torch.no_grad()
     def valid_step(self, batch):
