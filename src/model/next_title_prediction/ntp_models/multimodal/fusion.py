@@ -94,6 +94,8 @@ class MultimodalFusionConfig(PretrainedConfig, NTPConfig):
 
 class MultimodalFusion(PreTrainedModel):
 
+    config_class = MultimodalFusionConfig
+
     def __init__(self, config: MultimodalFusionConfig):
 
         super().__init__(config=config)
@@ -299,7 +301,7 @@ class NTPMultimodalFusion(NTPModel):
     @torch.no_grad()
     def valid_step(self, batch):
         output = self(batch)
-        truth: torch.Tensor = batch["labels"]
+        truth = batch["labels"]
 
         predictions = output.argmax(1)
 
@@ -309,9 +311,10 @@ class NTPMultimodalFusion(NTPModel):
             weight=self.config.labels_weights
         )
 
-        acc = (predictions == truth).sum()
+        predictions = [self.config.id2label[x.cpu().item()] for x in predictions]
+        truth = [self.config.id2label[x.cpu().item()] for x in truth]
 
-        return acc.item(), val_loss
+        return predictions, truth, val_loss
 
 def multimodal_main():
 
@@ -402,4 +405,4 @@ def multimodal_main():
     acc = []
     for test in test_list:
         acc.append(trainer.evaluate(test))
-    print(np.mean(acc))
+    print(acc)

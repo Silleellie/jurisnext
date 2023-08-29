@@ -130,9 +130,9 @@ class NTPBert(NTPModelHF):
     def valid_step(self, batch):
 
         output = self(**batch)
-        truth: torch.Tensor = batch["labels"]
+        truth = batch["labels"]
         # batch size (batch_size, num_labels) -> (batch_size, 1)
-        predictions: torch.Tensor = output.logits.argmax(dim=1)
+        predictions = output.logits.argmax(dim=1)
 
         val_loss = torch.nn.functional.cross_entropy(
             output.logits,
@@ -140,9 +140,10 @@ class NTPBert(NTPModelHF):
             weight=self.config.labels_weights
         )
 
-        acc = (predictions == truth).sum()
+        predictions = [self.config.id2label[x.cpu().item()] for x in predictions]
+        truth = [self.config.id2label[x.cpu().item()] for x in truth]
 
-        return acc.item(), val_loss
+        return predictions, truth, val_loss
 
 
 def bert_main():
@@ -227,7 +228,7 @@ def bert_main():
     acc = []
     for test in test_list:
         acc.append(trainer.evaluate(test))
-    print(np.mean(acc))
+    print(acc)
 
 
 if __name__ == "__main__":
