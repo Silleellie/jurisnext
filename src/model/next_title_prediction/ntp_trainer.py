@@ -12,7 +12,7 @@ from tqdm import tqdm
 from src import MODELS_DIR
 from src.data.legal_dataset import LegalDataset
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel
-from src.utils import seed_everything
+
 
 
 class NTPTrainer:
@@ -135,24 +135,32 @@ class NTPTrainer:
                         total=total_n_batch)
 
         val_loss = 0
-        matches = 0
+        total_preds = []
+        total_truths = []
 
         for i, batch in enumerate(pbar_val, start=1):
 
             prepared_input = self.ntp_model.prepare_input(batch)
-            acc, loss = self.ntp_model.valid_step(prepared_input)
+            predictions, truths, loss = self.ntp_model.valid_step(prepared_input)
 
             val_loss += loss.item()
-            matches += acc
+
+            total_preds.extend(predictions)
+            total_truths.extend(truths)
 
             # we update the loss every 1% progress considering the total n° of batches
             if (i % ceil(total_n_batch / 100)) == 0:
-                pbar_val.set_description(f"Val Loss -> {(val_loss / i):.6f}")
 
-        print(matches / preprocessed_validation.num_rows)
+                n_total_pred_so_far = len(total_preds)
+                matches = (np.array(total_preds) == np.array(total_truths)).sum()
+
+                pbar_val.set_description(f"Val Loss -> {(val_loss / i):.6f}, "
+                                         f"Acc -> {(matches / n_total_pred_so_far):.3f}")
 
         pbar_val.close()
 
+        # val_loss is computed for the entire batch, not for each sample, that's why is safe
+        # to use pbar_val
         return val_loss / len(pbar_val)
 
     def evaluate(self, test_dataset: datasets.Dataset):
@@ -166,18 +174,29 @@ class NTPTrainer:
         pbar_test = tqdm(preprocessed_test.iter(batch_size=self.eval_batch_size),
                          total=total_n_batch)
 
-        matches = 0
+        total_preds = []
+        total_truths = []
 
         for i, batch in enumerate(pbar_test, start=1):
 
             prepared_input = self.ntp_model.prepare_input(batch)
-            acc, _ = self.ntp_model.valid_step(prepared_input)
+            predictions, truths, _ = self.ntp_model.valid_step(prepared_input)
 
-            matches += acc
+            total_preds.extend(predictions)
+            total_truths.extend(truths)
 
             # we update the loss every 1% progress considering the total n° of batches
             if (i % ceil(total_n_batch / 100)) == 0:
-                pbar_test.set_description(f"Acc -> {(matches / (i * self.eval_batch_size)):.6f}")
 
-        acc = matches / preprocessed_test.num_rows
-        return acc
+                n_total_pred_so_far = len(total_preds)
+                matches = (np.array(total_preds) == np.array(total_truths)).sum()
+
+                pbar_test.set_description(f"Acc -> {(matches / n_total_pred_so_far):.3f}")
+
+        res_evaluation = self.ntp_model.compute_metrics(total_preds, total_truths)
+
+        for metric, val_metric in res_evaluation.items():
+            print(f"{metric}: {val_metric:.3f}")
+            print("-" * 80)
+
+        return res_evaluation
