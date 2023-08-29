@@ -1,12 +1,16 @@
 import argparse
 
-from src.model.next_title_prediction.ntp_trainer import flan_t5_main, bert_main, deberta_main, multimodal_main
+from src.model.next_title_prediction.ntp_models.bert import bert_main
+from src.model.next_title_prediction.ntp_models.lm.t5.t5 import t5_main
+from src.model.next_title_prediction.ntp_models.multimodal.fusion import multimodal_main
+from src.model.next_title_prediction.ntp_models.nli_deberta import nli_deberta_main
 from src.utils import seed_everything
+from src import ExperimentConfig
 
 available_models_main_func = {
-    "t5": flan_t5_main,
+    "t5": t5_main,
     "bert": bert_main,
-    "deberta_nli": deberta_main,
+    "nli_deberta": nli_deberta_main,
     "multimodal": multimodal_main
 }
 
@@ -24,12 +28,15 @@ if __name__ == '__main__':
                         metavar='2')
     parser.add_argument('-seed', '--random_seed', type=int, default=42,
                         help='random seed', metavar='42')
-    parser.add_argument('-model', '--model', type=str, default='t5',
-                        help='t5 to finetune google/flan-t5-small for Next Title Prediction, '
-                             'bert to finetune bert-base-uncased for Next Title Prediction, '
-                             'deberta_nli to finetune nli-deberta-v3-xsmall for Next Title Prediction, '
+    parser.add_argument('-m', '--model', type=str, default='t5',
+                        help='t5 to finetune a t5 checkpoint for Next Title Prediction, '
+                             'bert to finetune a bert checkpoint for Next Title Prediction, '
+                             'nli_deberta to finetune a deberta checkpoint for Next Title Prediction, '
                              'multimodal to train a multimodal concatenation fusion architecture for Next Title Prediction',
                         metavar='t5')
+    parser.add_argument('-ck', '--checkpoint', type=str, default=None,
+                        help='Add checkpoint to use for train (e.g. google/flan-t5-small with t5 model)',
+                        metavar='None')
     parser.add_argument('--use_clusters', action=argparse.BooleanOptionalAction, default=False,
                         help='Use default clustering algorithm associated with the model during train and eval')
 
@@ -38,22 +45,16 @@ if __name__ == '__main__':
     random_state = args.random_seed
     seed_everything(random_state)
 
-    epochs = args.epochs
-    train_batch_size = args.train_batch_size
-    eval_batch_size = args.eval_batch_size
-    use_clusters = args.use_clusters
+    ExperimentConfig.epochs = args.epochs
+    ExperimentConfig.batch_size = args.train_batch_size
+    ExperimentConfig.eval_batch_size = args.eval_batch_size
+    ExperimentConfig.use_cluster_alg = args.use_clusters
+    ExperimentConfig.checkpoint = args.checkpoint
 
-    args_dict = {
-        'n_epochs': epochs,
-        'batch_size': train_batch_size,
-        'eval_batch_size': eval_batch_size,
-        'use_cluster_alg': use_clusters
-    }
-
-    if args.model in {"t5", "bert", "deberta_nli", "multimodal"}:
+    if args.model in {"t5", "bert", "nli_deberta", "multimodal"}:
         model = args.model
     else:
-        raise ValueError("Only 't5', 'bert', 'deberta_nli' or 'multimodal' models are supported!")
+        raise ValueError("Only 't5', 'bert', 'nli_deberta' or 'multimodal' models are supported!")
 
     model_main_func = available_models_main_func[model]
-    model_main_func(**args_dict)
+    model_main_func()  # each main will use ExperimentConfig parameters
