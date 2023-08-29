@@ -1,9 +1,11 @@
 import os
 import pickle
 from abc import abstractmethod, ABC
-from typing import Union
+from typing import Union, Tuple, List
 
 import numpy as np
+import torch
+import transformers.optimization
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from transformers import PreTrainedModel, PreTrainedTokenizer, PreTrainedTokenizerFast, AutoTokenizer
 
@@ -32,24 +34,29 @@ class NTPModel:
 
         self.model.to(self.model.config.device)
 
+    # returns optimizer used in the default experiments
     @abstractmethod
-    def get_suggested_optimizer(self):
+    def get_suggested_optimizer(self) -> Union[torch.optim.Optimizer, transformers.optimization.Optimizer]:
         raise NotImplementedError
 
+    # returns the tokenized version of inputs for the model + additional info needed
     @abstractmethod
-    def tokenize(self, sample):
+    def tokenize(self, sample) -> dict:
         raise NotImplementedError
 
+    # performs additional ops on the tokenized input batch (e.g. for t5, -100 for pad token in target_ids)
     @abstractmethod
-    def prepare_input(self, batch):
+    def prepare_input(self, batch) -> dict:
         raise NotImplementedError
 
+    # returns loss
     @abstractmethod
-    def train_step(self, batch):
+    def train_step(self, batch) -> torch.Tensor:
         raise NotImplementedError
 
+    # return predictions, truths as string labels and loss
     @abstractmethod
-    def valid_step(self, batch):
+    def valid_step(self, batch) -> Tuple[List[str], List[str], torch.Tensor]:
         raise NotImplementedError
 
     @property
