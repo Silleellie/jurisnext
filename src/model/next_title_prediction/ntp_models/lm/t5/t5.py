@@ -281,13 +281,13 @@ def t5_main():
     torch.cuda.empty_cache()
 
     print("EVALUATION")
-    trainer.model = NTPT5.load(trainer.output_path)
+    trainer.ntp_model = NTPT5.load(trainer.output_path)
 
     # check which task yield better results
     for task in train_tasks:
 
         print(f"Evaluating task {repr(task)}")
-        trainer.model.set_test_task(task)
+        trainer.ntp_model.set_test_task(task)
         all_acc = []
         for i, test in enumerate(test_list):
             print(f"Eval on {i}-th test set")

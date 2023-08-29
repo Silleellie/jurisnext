@@ -397,7 +397,7 @@ def multimodal_main():
     torch.cuda.empty_cache()
 
     print("EVALUATION")
-    trainer.model = NTPMultimodalFusion.load(trainer.output_path)
+    trainer.ntp_model = NTPMultimodalFusion.load(trainer.output_path)
 
     acc = []
     for test in test_list:

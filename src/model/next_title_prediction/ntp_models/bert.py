@@ -222,7 +222,7 @@ def bert_main():
     torch.cuda.empty_cache()
 
     print("EVALUATION")
-    trainer.model = NTPBert.load(trainer.output_path)
+    trainer.ntp_model = NTPBert.load(trainer.output_path)
 
     acc = []
     for test in test_list:

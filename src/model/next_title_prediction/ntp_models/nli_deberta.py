@@ -261,7 +261,7 @@ def nli_deberta_main():
     torch.cuda.empty_cache()
 
     print("EVALUATION")
-    trainer.model = NTPNliDeberta.load(trainer.output_path)
+    trainer.ntp_model = NTPNliDeberta.load(trainer.output_path)
 
     acc = []
     for test in test_list:
