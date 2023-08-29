@@ -33,7 +33,7 @@ class NTPT5Config(NTPConfig, T5Config):
 
         self.training_tasks = training_tasks if training_tasks is not None else []
         self.test_task = test_task
-        self.all_unique_labels = all_unique_labels if all_unique_labels is not None else np.array([])
+        self.all_unique_labels = np.array(all_unique_labels) if all_unique_labels is not None else np.array([])
         self.device = device
 
     @classmethod
