@@ -11,7 +11,7 @@ import pandas as pd
 from datasets import Dataset, NamedSplit
 from sklearn.model_selection import train_test_split
 
-from src import RAW_DATA_DIR, RANDOM_STATE, INTERIM_DATA_DIR, PROCESSED_DATA_DIR
+from src import RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR
 
 
 def clean_original_dataset(original_dataset: pd.DataFrame):
