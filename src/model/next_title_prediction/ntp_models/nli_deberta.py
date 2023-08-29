@@ -60,7 +60,7 @@ class NTPNliDeberta(NTPModelHF):
 
         if self.cluster_label_mapper is not None:
             immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
-            next_candidate_titles = self.cluster_label_mapper.get_labels_from_clusters(immediate_next_cluster)
+            next_candidate_titles = self.cluster_label_mapper.get_labels_from_cluster(immediate_next_cluster)
             text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
         else:
             next_candidate_titles = np.array(self.config.all_unique_labels)

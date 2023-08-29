@@ -176,7 +176,7 @@ class ClusteredNTP(Task):
         cluster_mapper = kwargs.pop("cluster_mapper")
 
         next_cluster = cluster_mapper.get_clusters_from_labels(target_title).item()
-        next_possible_titles = cluster_mapper.get_labels_from_clusters(next_cluster)
+        next_possible_titles = cluster_mapper.get_labels_from_cluster(next_cluster)
 
         # random select of string separator for titles sequence and the prompt to use
         separator = " - " if random.getrandbits(1) else " ; "
@@ -232,7 +232,7 @@ class ClusteredNTPSideInfo(Task):
         reduced_rel_keywords = [random.choice(rel_keywords.split(", ")) for rel_keywords in rel_keywords_seq]
 
         next_cluster = cluster_mapper.get_clusters_from_labels(target_title).item()
-        next_possible_titles = cluster_mapper.get_labels_from_clusters(next_cluster)
+        next_possible_titles = cluster_mapper.get_labels_from_cluster(next_cluster)
 
         # random select of string separator for titles sequence and the prompt to use
         separator = " - " if random.getrandbits(1) else " ; "

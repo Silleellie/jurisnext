@@ -84,7 +84,7 @@ class ClusterLabelMapper:
 
         return self.cluster_arr[bool_mask]
 
-    def get_labels_from_clusters(self, clusters: Union[int, Iterable[int]]) -> np.ndarray[str]:
+    def get_labels_from_cluster(self, clusters: int) -> np.ndarray[str]:
         # check only one of the two, no need to check both
         assert self.labels_arr is not None, "call fit_predict method first!"
 

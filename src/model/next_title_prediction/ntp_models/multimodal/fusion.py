@@ -243,7 +243,7 @@ class NTPMultimodalFusion(NTPModel):
             # to add cluster label information, an additional row is added to the image
             # this row will have all cells that represent labels that are part of the cluster with value 1 and
             # all other cells with value 0
-            labels_for_cluster = self.cluster_label_mapper.get_labels_from_clusters(immediate_next_cluster)
+            labels_for_cluster = self.cluster_label_mapper.get_labels_from_cluster(immediate_next_cluster)
             cluster_repr_image_row = np.full(len(self.config.label2id), 0)
 
             for label_in_cluster in labels_for_cluster:
