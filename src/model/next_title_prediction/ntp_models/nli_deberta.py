@@ -152,6 +152,7 @@ class NTPNliDeberta(NTPModelHF):
     @torch.no_grad()
     def valid_step(self, batch):
 
+        text_labels = batch.pop("text_labels")
         mini_batch_size = self.config.validation_mini_batch_size
 
         val_loss = 0
@@ -190,11 +191,11 @@ class NTPNliDeberta(NTPModelHF):
 
             # get index of label which is entailment in prediction tensor
             prediction_index: torch.Tensor = prob_label_is_true.argmax(0).item()
-            prediction_text = batch["text_labels"][i][prediction_index]
+            prediction_text = text_labels[i][prediction_index]
 
             # get index of label which is entailment in truth tensor
             truth_index = (truth == self.config.label2id["entailment"]).nonzero().item()
-            truth_text = batch["text_labels"][i][truth_index]
+            truth_text = text_labels[i][truth_index]
 
             # increment accuracy if they match
             predictions.append(prediction_text)
