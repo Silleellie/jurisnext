@@ -35,7 +35,8 @@ class NTPTrainer:
 
         # output name
         if output_name is None:
-            output_name = f"{ntp_model.config.name_or_path}_{n_epochs}" if output_name is None else output_name
+            # replace '/' with '_' to avoid creation of subdir (google/flan-t5-small -> google_flan-t5-small)
+            output_name = f"{ntp_model.config.name_or_path.replace('/', '_')}_{n_epochs}"
 
         self.output_path = os.path.join(MODELS_DIR, output_name)
 
@@ -162,41 +163,3 @@ class NTPTrainer:
         # val_loss is computed for the entire batch, not for each sample, that's why is safe
         # to use pbar_val
         return val_loss / len(pbar_val)
-
-    def evaluate(self, test_dataset: datasets.Dataset):
-        self.ntp_model.eval()
-        preprocessed_test = test_dataset.map(self.ntp_model.tokenize,
-                                             remove_columns=test_dataset.column_names)
-        preprocessed_test.set_format("torch")
-
-        total_n_batch = ceil(preprocessed_test.num_rows / self.eval_batch_size)
-
-        pbar_test = tqdm(preprocessed_test.iter(batch_size=self.eval_batch_size),
-                         total=total_n_batch)
-
-        total_preds = []
-        total_truths = []
-
-        for i, batch in enumerate(pbar_test, start=1):
-
-            prepared_input = self.ntp_model.prepare_input(batch)
-            predictions, truths, _ = self.ntp_model.valid_step(prepared_input)
-
-            total_preds.extend(predictions)
-            total_truths.extend(truths)
-
-            # we update the loss every 1% progress considering the total n° of batches
-            if (i % ceil(total_n_batch / 100)) == 0:
-
-                n_total_pred_so_far = len(total_preds)
-                matches = (np.array(total_preds) == np.array(total_truths)).sum()
-
-                pbar_test.set_description(f"Acc -> {(matches / n_total_pred_so_far):.3f}")
-
-        res_evaluation = self.ntp_model.compute_metrics(total_preds, total_truths)
-
-        for metric, val_metric in res_evaluation.items():
-            print(f"{metric}: {val_metric:.3f}")
-            print("-" * 80)
-
-        return res_evaluation
