@@ -222,10 +222,12 @@ def t5_main():
 
     cluster_label = None
 
+    bool_task = BoolNTP(list(all_unique_labels))
+
     train_tasks = [
         DirectNTP(),
         DirectNTPSideInfo(),
-        BoolNTP(list(all_unique_labels))
+        bool_task
     ]
 
     sent_encoder = SentenceTransformerEncoder(
@@ -281,6 +283,9 @@ def t5_main():
 
     print("EVALUATION")
     trainer.ntp_model = NTPT5.load(trainer.output_path)
+
+    # remove bool task used only during train
+    train_tasks.remove(bool_task)
 
     # check which task yield better results
     for task in train_tasks:
