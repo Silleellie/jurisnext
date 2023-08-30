@@ -148,7 +148,7 @@ class NTPModel:
         return self.model(*args, **kwargs)
 
 
-class NTPModelHF(ABC, NTPModel):
+class NTPModelHF(NTPModel, ABC):
 
     config_class = NTPConfig
 
