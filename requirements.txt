@@ -10,3 +10,4 @@ numpy~=1.25.1
 sentencepiece
 protobuf
 sentence-transformers
+multimethod==1.9.1
