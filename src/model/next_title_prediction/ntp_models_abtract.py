@@ -19,7 +19,7 @@ class NTPConfig:
 
 
 # interface for all sequence classification models
-class NTPModel:
+class NTPModel(ABC):
 
     model_class = None
 
@@ -148,7 +148,7 @@ class NTPModel:
         return self.model(*args, **kwargs)
 
 
-class NTPModelHF(NTPModel, ABC):
+class NTPModelHF(NTPModel):
 
     config_class = NTPConfig
 
