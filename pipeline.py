@@ -4,14 +4,20 @@ from src.model.next_title_prediction.ntp_models.bert import bert_main
 from src.model.next_title_prediction.ntp_models.lm.t5.t5 import t5_main
 from src.model.next_title_prediction.ntp_models.multimodal.fusion import multimodal_main
 from src.model.next_title_prediction.ntp_models.nli_deberta import nli_deberta_main
+
+from src.evaluation.ntp_models_eval.t5_eval import t5_eval_main
+from src.evaluation.ntp_models_eval.bert_eval import bert_eval_main
+from src.evaluation.ntp_models_eval.nli_deberta_eval import nli_deberta_eval_main
+from src.evaluation.ntp_models_eval.fusion_eval import multimodal_eval_main
+
 from src.utils import seed_everything
 from src import ExperimentConfig
 
 available_models_main_func = {
-    "t5": t5_main,
-    "bert": bert_main,
-    "nli_deberta": nli_deberta_main,
-    "multimodal": multimodal_main
+    "t5": (t5_main, t5_eval_main),
+    "bert": (bert_main, bert_eval_main),
+    "nli_deberta": (nli_deberta_main, nli_deberta_eval_main),
+    "multimodal": (multimodal_main, multimodal_eval_main)
 }
 
 
@@ -56,5 +62,6 @@ if __name__ == '__main__':
     else:
         raise ValueError("Only 't5', 'bert', 'nli_deberta' or 'multimodal' models are supported!")
 
-    model_main_func = available_models_main_func[model]
-    model_main_func()  # each main will use ExperimentConfig parameters
+    model_train_func, model_eval_func = available_models_main_func[model]
+    model_name = model_train_func()  # each main will use ExperimentConfig parameters
+    model_eval_func(model_name)
