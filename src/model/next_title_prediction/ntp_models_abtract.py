@@ -6,7 +6,6 @@ from typing import Union, Tuple, List
 import numpy as np
 import torch
 import transformers.optimization
-from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from transformers import PreTrainedModel, PreTrainedTokenizer, PreTrainedTokenizerFast, AutoTokenizer
 
 from src.model.clustering import ClusterLabelMapper
@@ -111,38 +110,6 @@ class NTPModel(ABC):
         )
 
         return new_inst
-
-    @staticmethod
-    def compute_metrics(predictions, truths):
-
-        predictions = np.array(predictions)
-        truths = np.array(truths)
-
-        metrics_results = {}
-
-        precision_micro = precision_score(truths, predictions, average='micro')
-        precision_weighted = precision_score(truths, predictions, average='weighted')
-
-        recall_micro = recall_score(truths, predictions, average='micro')
-        recall_weighted = recall_score(truths, predictions, average='weighted')
-
-        f1_micro = f1_score(truths, predictions, average='micro')
-        f1_weighted = f1_score(truths, predictions, average='weighted')
-
-        accuracy = accuracy_score(truths, predictions)
-
-        metrics_results['Precision (micro)'] = precision_micro
-        metrics_results['Precision (weighted)'] = precision_weighted
-
-        metrics_results['Recall (micro)'] = recall_micro
-        metrics_results['Recall (weighted)'] = recall_weighted
-
-        metrics_results['F1 (micro)'] = f1_micro
-        metrics_results['F1 (weighted)'] = f1_weighted
-
-        metrics_results['Accuracy'] = accuracy
-
-        return metrics_results
 
     def __call__(self, *args, **kwargs):
         return self.model(*args, **kwargs)
