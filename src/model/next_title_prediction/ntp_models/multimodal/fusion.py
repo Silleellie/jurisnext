@@ -1,4 +1,3 @@
-import gc
 import os
 import pickle
 from typing import Dict, Union, List, Any, Optional
@@ -16,7 +15,6 @@ from src.model.next_title_prediction.ntp_models.multimodal.encoders import CNNEn
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel, NTPConfig
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 from src.model.sentence_encoders import SentenceTransformerEncoder
-from src.utils import seed_everything
 
 
 class MultimodalFusionConfig(PretrainedConfig, NTPConfig):
@@ -316,6 +314,7 @@ class NTPMultimodalFusion(NTPModel):
 
         return predictions, truth, val_loss
 
+
 def multimodal_main():
 
     n_epochs = ExperimentConfig.epochs
@@ -324,8 +323,6 @@ def multimodal_main():
     device = ExperimentConfig.device
     use_cluster_alg = ExperimentConfig.use_cluster_alg
     random_state = ExperimentConfig.random_state
-
-    seed_everything(random_state)
 
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
@@ -348,7 +345,6 @@ def multimodal_main():
 
     train = dataset["train"]
     val = dataset["validation"]
-    test_list = dataset["test"]
 
     all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
     # "smoothing" so that a weight can be calculated for labels which do not appear in the
@@ -396,13 +392,4 @@ def multimodal_main():
 
     trainer.train(train, val)
 
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    print("EVALUATION")
-    trainer.ntp_model = NTPMultimodalFusion.load(trainer.output_path)
-
-    acc = []
-    for test in test_list:
-        acc.append(trainer.evaluate(test))
-    print(acc)
+    return trainer.output_name

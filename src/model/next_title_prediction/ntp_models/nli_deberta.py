@@ -1,4 +1,3 @@
-import gc
 import itertools
 import random
 from math import ceil
@@ -15,7 +14,6 @@ from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.next_title_prediction.ntp_models_abtract import NTPConfig, NTPModelHF
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 from src.model.sentence_encoders import SentenceTransformerEncoder
-from src.utils import seed_everything
 
 
 class NTPNliDebertaConfig(DebertaConfig, NTPConfig):
@@ -214,14 +212,11 @@ def nli_deberta_main():
     device = ExperimentConfig.device
     use_cluster_alg = ExperimentConfig.use_cluster_alg
 
+    checkpoint = 'cross-encoder/nli-deberta-v3-xsmall'
     if ExperimentConfig.checkpoint is not None:
         checkpoint = ExperimentConfig.checkpoint
-    else:
-        checkpoint = 'cross-encoder/nli-deberta-v3-xsmall'
 
     random_state = ExperimentConfig.random_state
-
-    seed_everything(random_state)
 
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
@@ -245,7 +240,6 @@ def nli_deberta_main():
 
     train = dataset["train"]
     val = dataset["validation"]
-    test_list = dataset["test"]
 
     ntp_model = NTPNliDeberta(
         pretrained_model_or_pth=checkpoint,
@@ -264,18 +258,4 @@ def nli_deberta_main():
 
     trainer.train(train, val)
 
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    print("EVALUATION")
-    trainer.ntp_model = NTPNliDeberta.load(trainer.output_path)
-
-    acc = []
-    for test in test_list:
-        acc.append(trainer.evaluate(test))
-    print(np.mean(acc))
-
-
-if __name__ == "__main__":
-
-    nli_deberta_main()
+    return trainer.output_name

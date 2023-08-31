@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gc
 from typing import Optional, Dict, Any
 
 import numpy as np
@@ -15,7 +14,6 @@ from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 from src.model.sentence_encoders import SentenceTransformerEncoder
-from src.utils import seed_everything
 
 
 class NTPBertConfig(BertConfig, NTPConfig):
@@ -154,14 +152,11 @@ def bert_main():
     device = ExperimentConfig.device
     use_cluster_alg = ExperimentConfig.use_cluster_alg
 
+    checkpoint = "bert-base-uncased"
     if ExperimentConfig.checkpoint is not None:
         checkpoint = ExperimentConfig.checkpoint
-    else:
-        checkpoint = "bert-base-uncased"
 
     random_state = ExperimentConfig.random_state
-
-    seed_everything(random_state)
 
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
@@ -185,7 +180,6 @@ def bert_main():
 
     train = dataset["train"]
     val = dataset["validation"]
-    test_list = dataset["test"]
 
     all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
     # "smoothing" so that a weight can be calculated for labels which do not appear in the
@@ -219,18 +213,4 @@ def bert_main():
 
     trainer.train(train, val)
 
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    print("EVALUATION")
-    trainer.ntp_model = NTPBert.load(trainer.output_path)
-
-    acc = []
-    for test in test_list:
-        acc.append(trainer.evaluate(test))
-    print(acc)
-
-
-if __name__ == "__main__":
-
-    bert_main()
+    return trainer.output_name
