@@ -89,8 +89,6 @@ class RankingMetric(Metric):
         if self.k is not None:
             string += f"@{self.k}"
 
-        string += " (weighted)"
-
         return string
 
 
@@ -120,7 +118,8 @@ class MAP(RankingMetric):
             hits: np.ndarray = (pred == truth).nonzero()[0]
 
             if len(hits) == 0:
-                return 0
+                aps.append(0)
+                continue
 
             # we initialize an array for true positives. True positive is incremented by 1 each time a relevant item
             # is found, therefore this array will be as long as the array containing the indices of items both in
@@ -139,9 +138,6 @@ class MAP(RankingMetric):
         map = np.mean(aps).item()
 
         return map
-
-    def __str__(self):
-        return "MAP"
 
 
 class MRR(RankingMetric):
@@ -171,6 +167,3 @@ class MRR(RankingMetric):
 
         mrrs = np.mean(rrs).item()
         return mrrs
-
-    def __str__(self):
-        return "MRR"
