@@ -11,8 +11,8 @@ from tqdm import tqdm
 
 from src import MODELS_DIR
 from src.data.legal_dataset import LegalDataset
+from src.evaluation.metrics import Hit, Accuracy
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel
-
 
 
 class NTPTrainer:
@@ -152,11 +152,16 @@ class NTPTrainer:
             # we update the loss every 1% progress considering the total n° of batches
             if (i % ceil(total_n_batch / 100)) == 0:
 
-                n_total_pred_so_far = len(total_preds)
-                matches = (np.array(total_preds) == np.array(total_truths)).sum()
+                preds_so_far = np.array(total_preds)
+                truths_so_far = np.array(total_truths)
 
+                metric = Accuracy()
+                if len(preds_so_far.shape) > 1:
+                    metric = Hit()
+
+                result = metric(preds_so_far, truths_so_far)
                 pbar_val.set_description(f"Val Loss -> {(val_loss / i):.6f}, "
-                                         f"Acc -> {(matches / n_total_pred_so_far):.3f}")
+                                         f"{metric} -> {result:.3f}")
 
         pbar_val.close()
 
