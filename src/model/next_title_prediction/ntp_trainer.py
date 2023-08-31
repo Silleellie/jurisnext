@@ -38,6 +38,7 @@ class NTPTrainer:
             # replace '/' with '_' to avoid creation of subdir (google/flan-t5-small -> google_flan-t5-small)
             output_name = f"{ntp_model.config.name_or_path.replace('/', '_')}_{n_epochs}"
 
+        self.output_name = output_name
         self.output_path = os.path.join(MODELS_DIR, output_name)
 
     def train(self, train_dataset: datasets.Dataset, validation_dataset: datasets.Dataset = None):
