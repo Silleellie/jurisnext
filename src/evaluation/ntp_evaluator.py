@@ -73,6 +73,9 @@ if __name__ == "__main__":
     test_set = ds.get_hf_datasets()["test"]
 
     evaluator = NTPEvaluator(ntp_model, eval_batch_size=2)
-    result = evaluator.evaluate(test_set, metrics=[Hit(), Hit(k=1)])
 
-    print(result)
+    results = []
+    for test_split in test_set:
+        result = evaluator.evaluate(test_split, metrics=[Hit(), Precision(), Recall(), F1()])
+        results.append(result)
+    print(results)
