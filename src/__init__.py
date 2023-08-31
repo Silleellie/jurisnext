@@ -11,6 +11,8 @@ RAW_DATA_DIR = os.path.join(DATA_DIR, "raw")
 PROCESSED_DATA_DIR = os.path.join(DATA_DIR, "processed")
 INTERIM_DATA_DIR = os.path.join(DATA_DIR, "interim")
 MODELS_DIR = os.path.join(ROOT_PATH, "models")
+REPORTS_DIR = os.path.join(ROOT_PATH, "reports")
+METRICS_DIR = os.path.join(REPORTS_DIR, "metrics")
 
 
 @dataclass
