@@ -63,6 +63,10 @@ class ClusterLabelMapper:
         self.cluster_arr: Optional[np.ndarray] = None
 
     def fit(self, train_sentences: np.ndarray[str], all_sentences: np.ndarray[str]) -> ClusterLabelMapper:
+
+        train_sentences = np.unique(train_sentences)
+        all_sentences = np.unique(all_sentences)
+
         encoded_train_sentences = self.sentence_encoder(*train_sentences,
                                                         desc="Encoding TRAIN labels for clustering...")
         self.clustering_alg.fit(encoded_train_sentences)
