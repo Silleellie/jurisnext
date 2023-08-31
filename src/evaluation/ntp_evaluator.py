@@ -47,20 +47,7 @@ class NTPEvaluator:
             total_preds.extend(predictions)
             total_truths.extend(truths)
 
-            # we update the loss every 1% progress considering the total n° of batches
-            if (i % ceil(total_n_batch / 100)) == 0:
-
-                preds_so_far = np.array(total_preds)
-                truths_so_far = np.array(total_truths)
-
-                metric = Accuracy()
-                if len(preds_so_far.shape) > 1:
-                    metric = Hit()
-
-                result = metric(preds_so_far, truths_so_far)
-                pbar_test.set_description(f"{metric} -> {result:.3f}")
-
-        total_preds = np.array(total_preds)
+        total_preds = np.array(total_preds).squeeze()
         total_truths = np.array(total_truths)
 
         res_eval_dict = {str(metric): metric(total_preds, total_truths)

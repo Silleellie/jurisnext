@@ -157,10 +157,10 @@ class NTPTrainer:
                 truths_so_far = np.array(total_truths)
 
                 metric = Accuracy()
-                if len(preds_so_far.shape) > 1:
+                if len(preds_so_far.squeeze().shape) > 1:
                     metric = Hit()
 
-                result = metric(preds_so_far, truths_so_far)
+                result = metric(preds_so_far.squeeze(), truths_so_far)
                 pbar_val.set_description(f"Val Loss -> {(val_loss / i):.6f}, "
                                          f"{metric} -> {result:.3f}")
 
