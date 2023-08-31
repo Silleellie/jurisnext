@@ -1,15 +1,11 @@
-import os.path
 from math import ceil
-from typing import Callable, List
+from typing import List
 
 import datasets
 from tqdm import tqdm
 import numpy as np
 
-from src import MODELS_DIR
-from src.data.legal_dataset import LegalDataset
-from src.evaluation.metrics import Metric, Hit, Accuracy
-from src.model.next_title_prediction.ntp_models import NTPT5
+from src.evaluation.metrics import Metric
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel
 
 
@@ -39,6 +35,8 @@ class NTPEvaluator:
         total_preds = []
         total_truths = []
 
+        pbar_test.set_description("Computing predictions for eval...")
+
         for i, batch in enumerate(pbar_test, start=1):
 
             prepared_input = self.ntp_model.prepare_input(batch)
@@ -54,20 +52,3 @@ class NTPEvaluator:
                          for metric in metrics}
 
         return res_eval_dict
-
-
-if __name__ == "__main__":
-
-    model_pth = os.path.join(MODELS_DIR, "google_flan-t5-small_20")
-
-    ntp_model = NTPT5.load(model_pth)
-    ds = LegalDataset.load_dataset()
-    test_set = ds.get_hf_datasets()["test"]
-
-    evaluator = NTPEvaluator(ntp_model, eval_batch_size=2)
-
-    results = []
-    for test_split in test_set:
-        result = evaluator.evaluate(test_split, metrics=[Hit(), Precision(), Recall(), F1()])
-        results.append(result)
-    print(results)
