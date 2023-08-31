@@ -66,7 +66,7 @@ class NTPEvaluator:
 
 if __name__ == "__main__":
 
-    model_pth = os.path.join(MODELS_DIR, "google/flan-t5-small_20")
+    model_pth = os.path.join(MODELS_DIR, "google_flan-t5-small_20")
 
     ntp_model = NTPT5.load(model_pth)
     ds = LegalDataset.load_dataset()
