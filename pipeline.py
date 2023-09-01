@@ -1,5 +1,6 @@
 import argparse
 
+from src.data.legal_dataset import data_main
 from src.model.next_title_prediction.ntp_models.bert import bert_main
 from src.model.next_title_prediction.ntp_models.lm.t5.t5 import t5_main
 from src.model.next_title_prediction.ntp_models.multimodal.fusion import multimodal_main
@@ -34,7 +35,8 @@ if __name__ == '__main__':
                         metavar='2')
     parser.add_argument('-seed', '--random_seed', type=int, default=42,
                         help='random seed', metavar='42')
-    parser.add_argument('-m', '--model', type=str, default='bert',
+    parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?',
+                        choices=['t5', 'bert', 'nli_deberta', 'multimodal'],
                         help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
                              'bert to finetune a bert checkpoint for Next Title Prediction, '
                              'nli_deberta to finetune a deberta checkpoint for Next Title Prediction, '
@@ -44,29 +46,39 @@ if __name__ == '__main__':
     parser.add_argument('-ck', '--checkpoint', type=str, default=None,
                         help='Add checkpoint to use for train (e.g. google/flan-t5-small with t5 model)',
                         metavar='None')
+    parser.add_argument('--use_clusters', action=argparse.BooleanOptionalAction, default=False,
+                        help='Use default clustering algorithm associated with the model during train and eval')
+    parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
+                        help='Specify the number of test set to sample for evaluating the model trained',
+                        metavar='10')
+    parser.add_argument('-d', '--device', type=str, default="cuda:0",
+                        help='Specify the device which should be used during the experiment',
+                        metavar='cuda:0')
     parser.add_argument('-o', '--output_name', type=str, default=None,
                         help='Specify a custom name for the trained model which will be saved in the "models" dir',
                         metavar='None')
-    parser.add_argument('--use_clusters', action=argparse.BooleanOptionalAction, default=False,
-                        help='Use default clustering algorithm associated with the model during train and eval')
 
     args = parser.parse_args()
-
-    random_state = args.random_seed
-    seed_everything(random_state)
 
     ExperimentConfig.epochs = args.epochs
     ExperimentConfig.batch_size = args.train_batch_size
     ExperimentConfig.eval_batch_size = args.eval_batch_size
-    ExperimentConfig.use_cluster_alg = args.use_clusters
+    ExperimentConfig.random_state = args.random_seed
     ExperimentConfig.checkpoint = args.checkpoint
+    ExperimentConfig.use_cluster_alg = args.use_clusters
+    ExperimentConfig.n_test_set = args.n_test_set
     ExperimentConfig.output_name = args.output_name
 
-    if args.model in {"t5", "bert", "nli_deberta", "multimodal"}:
-        model = args.model
-    else:
-        raise ValueError("Only 't5', 'bert', 'nli_deberta' or 'multimodal' models are supported!")
+    # set fixed seed for experiment across all libraries used
+    seed_everything(args.random_seed)
 
+    # split dataset and save to disk
+    data_main()
+
+    # train model
+    model = args.model
     model_train_func, model_eval_func = available_models_main_func[model]
     model_name = model_train_func()  # each main will use ExperimentConfig parameters
+
+    # eval the fit model
     model_eval_func(model_name)

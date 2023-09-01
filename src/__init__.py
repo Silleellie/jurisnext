@@ -20,8 +20,9 @@ class ExperimentConfig:
     epochs: int = 100
     batch_size: int = 2
     eval_batch_size: int = 2
-    use_cluster_alg: bool = True
-    checkpoint: Optional[str] = None
-    output_name: Optional[str] = None
-    device: str = "cuda:0"
     random_state: int = 42
+    checkpoint: Optional[str] = None
+    use_cluster_alg: bool = True
+    n_test_set: int = 10
+    device: str = "cuda:0"
+    output_name: Optional[str] = None
