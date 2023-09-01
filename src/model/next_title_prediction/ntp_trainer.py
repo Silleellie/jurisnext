@@ -71,7 +71,7 @@ class NTPTrainer:
 
             # if no significant change happens to the loss after 10 epochs then early stopping
             if no_change_counter == 10:
-                print("Early stopping")
+                print("No significant improvement to validation loss in the last 10 epochs, early stopping!")
                 self.ntp_model.save(self.output_path)
                 break
 
@@ -121,6 +121,8 @@ class NTPTrainer:
                     min_val_loss = val_loss
                     no_change_counter = 0
                     self.ntp_model.save(self.output_path)
+
+                    print(f"Validation loss is improved, model saved into {self.output_path}!")
 
                 else:
                     no_change_counter += 1
