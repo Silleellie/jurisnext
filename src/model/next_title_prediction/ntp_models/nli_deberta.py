@@ -39,9 +39,10 @@ class NTPNliDeberta(NTPModelHF):
 
     model_class = DebertaV2ForSequenceClassification
     config_class = NTPNliDebertaConfig
+    default_checkpoint = 'cross-encoder/nli-deberta-v3-xsmall'
 
     def __init__(self,
-                 pretrained_model_or_pth: str = 'cross-encoder/nli-deberta-v3-xsmall',
+                 pretrained_model_or_pth: str = default_checkpoint,
                  cluster_label_mapper: ClusterLabelMapper = None,
                  **kwargs):
 
@@ -204,19 +205,19 @@ class NTPNliDeberta(NTPModelHF):
         return predictions, truths, val_loss
 
 
-def nli_deberta_main():
+def nli_deberta_main(exp_config: ExperimentConfig):
 
-    n_epochs = ExperimentConfig.epochs
-    batch_size = ExperimentConfig.batch_size
-    eval_batch_size = ExperimentConfig.eval_batch_size
-    device = ExperimentConfig.device
-    use_cluster_alg = ExperimentConfig.use_cluster_alg
+    n_epochs = exp_config.epochs
+    batch_size = exp_config.train_batch_size
+    eval_batch_size = exp_config.eval_batch_size
+    device = exp_config.device
+    use_cluster_alg = exp_config.use_clusters
 
     checkpoint = 'cross-encoder/nli-deberta-v3-xsmall'
-    if ExperimentConfig.checkpoint is not None:
-        checkpoint = ExperimentConfig.checkpoint
+    if exp_config.checkpoint is not None:
+        checkpoint = exp_config.checkpoint
 
-    random_state = ExperimentConfig.random_state
+    random_state = exp_config.random_seed
 
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
@@ -254,7 +255,7 @@ def nli_deberta_main():
         batch_size=batch_size,
         all_labels=all_unique_labels,
         eval_batch_size=eval_batch_size,
-        output_name=ExperimentConfig.output_name
+        output_name=exp_config.exp_name
     )
 
     trainer.train(train, val)

@@ -57,9 +57,10 @@ class NTPBertConfig(BertConfig, NTPConfig):
 class NTPBert(NTPModelHF):
     model_class = BertForSequenceClassification
     config_class = NTPBertConfig
+    default_checkpoint = 'bert-base-uncased'
 
     def __init__(self,
-                 pretrained_model_or_pth: str = 'bert-base-uncased',
+                 pretrained_model_or_pth: str = default_checkpoint,
                  cluster_label_mapper: ClusterLabelMapper = None,
                  **config_kwargs):
 
@@ -144,19 +145,19 @@ class NTPBert(NTPModelHF):
         return predictions, truth, val_loss
 
 
-def bert_main():
+def bert_main(exp_config: ExperimentConfig):
 
-    n_epochs = ExperimentConfig.epochs
-    batch_size = ExperimentConfig.batch_size
-    eval_batch_size = ExperimentConfig.eval_batch_size
-    device = ExperimentConfig.device
-    use_cluster_alg = ExperimentConfig.use_cluster_alg
+    n_epochs = exp_config.epochs
+    batch_size = exp_config.train_batch_size
+    eval_batch_size = exp_config.eval_batch_size
+    device = exp_config.device
+    use_cluster_alg = exp_config.use_clusters
 
     checkpoint = "bert-base-uncased"
-    if ExperimentConfig.checkpoint is not None:
-        checkpoint = ExperimentConfig.checkpoint
+    if exp_config.checkpoint is not None:
+        checkpoint = exp_config.checkpoint
 
-    random_state = ExperimentConfig.random_state
+    random_state = exp_config.random_seed
 
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
@@ -209,7 +210,7 @@ def bert_main():
         batch_size=batch_size,
         all_labels=all_unique_labels,
         eval_batch_size=eval_batch_size,
-        output_name=ExperimentConfig.output_name
+        output_name=exp_config.exp_name
     )
 
     trainer.train(train, val)

@@ -1,9 +1,14 @@
 import os
 import random
+from contextlib import contextmanager
+from typing import Literal
 
 import numpy as np
 import torch
 import torch.backends.cudnn
+import wandb
+
+from src import ExperimentConfig
 
 
 def seed_everything(seed: int):
@@ -29,3 +34,17 @@ def seed_everything(seed: int):
     print(f"Random seed set as {seed}")
 
     return seed
+
+
+def log_wandb(exp_config: ExperimentConfig, parameters_to_log: dict):
+    if exp_config.log_wandb:
+        wandb.log(parameters_to_log)
+
+
+@contextmanager
+def init_wandb(exp_name: str, job_type: Literal['data', 'train', 'eval'], log: bool):
+    if log:
+        with wandb.init(project="BD-Next-Title-Prediction", job_type=job_type, group=exp_name):
+            yield
+    else:
+        yield

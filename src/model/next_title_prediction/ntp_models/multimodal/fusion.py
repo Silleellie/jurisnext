@@ -315,14 +315,14 @@ class NTPMultimodalFusion(NTPModel):
         return predictions, truth, val_loss
 
 
-def multimodal_main():
+def multimodal_main(exp_config: ExperimentConfig):
 
-    n_epochs = ExperimentConfig.epochs
-    batch_size = ExperimentConfig.batch_size
-    eval_batch_size = ExperimentConfig.eval_batch_size
-    device = ExperimentConfig.device
-    use_cluster_alg = ExperimentConfig.use_cluster_alg
-    random_state = ExperimentConfig.random_state
+    n_epochs = exp_config.epochs
+    batch_size = exp_config.train_batch_size
+    eval_batch_size = exp_config.eval_batch_size
+    device = exp_config.device
+    use_cluster_alg = exp_config.use_clusters
+    random_state = exp_config.random_seed
 
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
@@ -382,8 +382,8 @@ def multimodal_main():
     )
 
     output_name = f"MultimodalFusion_{n_epochs}"
-    if ExperimentConfig.output_name is not None:
-        output_name = ExperimentConfig.output_name
+    if exp_config.exp_name is not None:
+        output_name = exp_config.exp_name
 
     trainer = NTPTrainer(
         ntp_model=model_ntp,

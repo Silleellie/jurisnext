@@ -8,10 +8,12 @@ from typing import Tuple, Dict
 import datasets
 import numpy as np
 import pandas as pd
+import wandb
 from datasets import Dataset, NamedSplit
+from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 
-from src import RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, ExperimentConfig
+from src import RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, ExperimentConfig, REPORTS_DIR
 
 
 def clean_original_dataset(original_dataset: pd.DataFrame):
@@ -20,7 +22,7 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
                                         "concept:name",
                                         "concept:name:paragraphs",
                                         "concept:name:section"]]
-    
+
     # we rename columns to make them more readable
     cleaned_dataset = cleaned_dataset.rename(columns={"case:concept:name": "case_id",
                                                       "concept:name": "title",
@@ -50,8 +52,11 @@ class LegalDataset:
     val_path: str = os.path.join(PROCESSED_DATA_DIR, "validation.pkl")
     test_list_path: str = os.path.join(PROCESSED_DATA_DIR, "test_list.pkl")
 
-    def __init__(self, n_test_set: int = 10):
+    def __init__(self,
+                 n_test_set: int,
+                 random_seed: int):
 
+        self.random_seed = random_seed
         self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_set)
 
     @cached_property
@@ -100,14 +105,14 @@ class LegalDataset:
         train_ids, test_ids = train_test_split(
             unique_case_ids,
             test_size=0.2,
-            random_state=ExperimentConfig.random_state,
+            random_state=self.random_seed,
             shuffle=True
         )
 
         train_ids, val_ids = train_test_split(
             train_ids,
             test_size=0.1,
-            random_state=ExperimentConfig.random_state,
+            random_state=self.random_seed,
             shuffle=True
         )
 
@@ -170,22 +175,22 @@ class LegalDataset:
             self.train_df = pd.concat([self.train_df, rows_to_add_train])
         else:
             val_hf_dataset = Dataset.from_pandas(self.val_df, split=datasets.Split.VALIDATION, preserve_index=False)
-            
+
         train_hf_ds = Dataset.from_pandas(self.train_df, split=datasets.Split.TRAIN, preserve_index=False)
         test_hf_ds_list = [
             Dataset.from_pandas(test_df, split=NamedSplit(f"test_{i}"), preserve_index=False)
             for i, test_df in enumerate(self.test_df_list)
         ]
-        
+
         # we create a dataset dict containing each split
         dataset_dict = {
             "train": train_hf_ds
         }
         if val_hf_dataset is not None:
             dataset_dict["validation"] = val_hf_dataset
-        
+
         dataset_dict["test"] = test_hf_ds_list
-        
+
         return dataset_dict
 
     @classmethod
@@ -212,8 +217,63 @@ class LegalDataset:
         return obj
 
 
-def data_main():
+def plot_save_label_counts(ds_frame: pd.DataFrame, fig_path: str):
+    
+    ax = ds_frame.head(30).plot.barh(x='titles', y='count', rot=0, figsize=(10.4, 8))
 
+    # so that top elements are in the upper part of the diagram
+    ax.invert_yaxis()
+
+    plot_x_index_ticks = plt.xticks()[0][1:-1]
+
+    for tick in plot_x_index_ticks:
+        ax.axvline(x=tick, ls=':', color='tab:orange', zorder=0)
+
+    plt.tight_layout()
+
+    plt.savefig(fig_path)
+
+    plt.clf()
+    plt.cla()
+    plt.close()
+
+
+def log_parameters(ds: LegalDataset, exp_name: str):
+    parameters_to_log = {
+        "n_test_set": len(ds.test_df_list),
+        "random_seed": ds.random_seed,
+        "shuffle": True,
+        "split_test_size": 0.2,
+        "split_val_size": 0.1,
+        "train_set_n_cases": ds.train_df.shape[0],
+        "val_set_n_cases": ds.val_df.shape[0],
+        "test_set_n_cases": ds.test_df_list[0].shape[0],
+        "original_title_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                                     exp_name,
+                                                                     "original_titles_counts.png"),
+                                                        mode="RGB"),
+        "train_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                            exp_name,
+                                                            "train_titles_counts.png"),
+                                               mode="RGB"),
+        "val_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                          exp_name,
+                                                          "val_titles_counts.png"),
+                                             mode="RGB"),
+        "test_distribution_plot": [wandb.Image(os.path.join(REPORTS_DIR,
+                                                            exp_name,
+                                                            "test_sets",
+                                                            f"test_{test_split_idx}_"
+                                                            f"titles_counts.png"),
+                                               mode="RGB",
+                                               caption=f"Test idx: {test_split_idx}")
+                                   for test_split_idx in range(len(ds.test_df_list))]
+    }
+
+    wandb.log(parameters_to_log)
+
+
+def data_main(exp_config: ExperimentConfig):
     if not os.path.isfile(os.path.join(RAW_DATA_DIR, "pre-processed_representations.pkl")):
         raise FileNotFoundError("Please add 'pre-processed_representations.pkl' into 'data/raw' folder!")
 
@@ -226,8 +286,61 @@ def data_main():
     cleaned_df.to_pickle(cleaned_df_output_path)
 
     # the constructor will create and dump the splits
-    LegalDataset(n_test_set=ExperimentConfig.n_test_set)
+    ds = LegalDataset(n_test_set=exp_config.n_test_set, random_seed=exp_config.random_seed)
+
+    # create directory where all the distributions will be saved
+    os.makedirs(os.path.join(REPORTS_DIR, exp_config.exp_name), exist_ok=True)
+
+    # PLOT ORIGINAL DATASET TITLES DISTRIBUTION
+    cleaned_df_to_plot = cleaned_df.rename(columns={"title": "titles"})
+    labels_count = cleaned_df_to_plot["titles"].value_counts().reset_index()
+    labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
+
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "original_titles_counts.png"))
+
+    # check that all test sets have the same number of cases
+    assert all(ds.test_df_list[0].shape[0] == test_set.shape[0] for test_set in ds.test_df_list)
+
+    # PLOT TRAIN TITLES DISTRIBUTION
+    train_df_to_plot = ds.train_df.explode("title_sequence").rename(columns={"title_sequence": "titles"})
+    labels_count = train_df_to_plot["titles"].value_counts().reset_index()
+    labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
+
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "train_titles_counts.png"))
+
+    # PLOT VAL TITLES DISTRIBUTION
+    val_df_to_plot = ds.val_df.explode("input_title_sequence")
+    labels_count = pd.concat((val_df_to_plot["input_title_sequence"],
+                              val_df_to_plot["immediate_next_title"])).value_counts().reset_index()
+    labels_count = labels_count.rename(columns={"index": "titles"})
+    labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
+
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "val_titles_counts.png"))
+
+    # PLOT TEST TITLES DISTRIBUTION
+
+    # create directory where all the test sets distributions will be saved
+    os.makedirs(os.path.join(REPORTS_DIR, exp_config.exp_name, "test_sets"), exist_ok=True)
+
+    for i, test_df in enumerate(ds.test_df_list):
+        test_df_to_plot = test_df.explode("input_title_sequence")
+        labels_count = pd.concat((test_df_to_plot["input_title_sequence"],
+                                  test_df_to_plot["immediate_next_title"])).value_counts().reset_index()
+        labels_count = labels_count.rename(columns={"index": "titles"})
+        labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
+
+        plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR,
+                                                          exp_config.exp_name,
+                                                          "test_sets",
+                                                          f"test_{i}_titles_counts.png"))
+
+    if exp_config.log_wandb:
+        log_parameters(ds, exp_config.exp_name)
 
     print(f"Train set pickled to {LegalDataset.train_path}!")
     print(f"Validation set pickled to {LegalDataset.val_path}!")
     print(f"Test set list pickled to {LegalDataset.test_list_path}!")
+
+
+if __name__ == "__main__":
+    data_main(ExperimentConfig("we", "we", "we"))

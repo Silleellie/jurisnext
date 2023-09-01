@@ -17,12 +17,17 @@ METRICS_DIR = os.path.join(REPORTS_DIR, "metrics")
 
 @dataclass
 class ExperimentConfig:
+
+    # these 3 are set in pipeline.py depending on cmd parameters passed
+    model: Optional[str]
+    checkpoint: Optional[str]
+    exp_name: Optional[str]
+
     epochs: int = 100
-    batch_size: int = 2
+    train_batch_size: int = 2
     eval_batch_size: int = 2
-    random_state: int = 42
-    checkpoint: Optional[str] = None
-    use_cluster_alg: bool = True
+    random_seed: int = 42
+    use_clusters: bool = False
+    log_wandb: bool = False
     n_test_set: int = 10
     device: str = "cuda:0"
-    output_name: Optional[str] = None

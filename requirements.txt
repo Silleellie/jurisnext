@@ -10,3 +10,4 @@ numpy~=1.25.1
 sentencepiece
 protobuf
 sentence-transformers
+wandb~=0.15.9

@@ -79,9 +79,10 @@ class NTPT5(NTPModelHF):
 
     model_class = T5ForConditionalGeneration
     config_class = NTPT5Config
+    default_checkpoint = 'google/flan-t5-small'
 
     def __init__(self,
-                 pretrained_model_or_pth: str = 'google/flan-t5-small',
+                 pretrained_model_or_pth: str = default_checkpoint,
                  sentence_encoder: SentenceEncoder = SentenceTransformerEncoder(),
                  cluster_label_mapper: ClusterLabelMapper = None,
                  **config_and_gen_kwargs):
@@ -197,19 +198,19 @@ class NTPT5(NTPModelHF):
         return mapped_predictions, target_text, val_loss
 
 
-def t5_main():
+def t5_main(exp_config: ExperimentConfig):
 
-    n_epochs = ExperimentConfig.epochs
-    batch_size = ExperimentConfig.batch_size
-    eval_batch_size = ExperimentConfig.eval_batch_size
-    device = ExperimentConfig.device
-    use_cluster_alg = ExperimentConfig.use_cluster_alg
+    n_epochs = exp_config.epochs
+    batch_size = exp_config.train_batch_size
+    eval_batch_size = exp_config.eval_batch_size
+    device = exp_config.device
+    use_cluster_alg = exp_config.use_clusters
 
     checkpoint = "google/flan-t5-small"
-    if ExperimentConfig.checkpoint is not None:
-        checkpoint = ExperimentConfig.checkpoint
+    if exp_config.checkpoint is not None:
+        checkpoint = exp_config.checkpoint
 
-    random_state = ExperimentConfig.random_state
+    random_state = exp_config.random_seed
 
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
@@ -265,7 +266,7 @@ def t5_main():
         batch_size=batch_size,
         all_labels=all_unique_labels,
         eval_batch_size=eval_batch_size,
-        output_name=ExperimentConfig.output_name
+        output_name=exp_config.exp_name
     )
 
     train = dataset["train"]
