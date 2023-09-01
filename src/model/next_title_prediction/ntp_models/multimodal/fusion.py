@@ -381,13 +381,17 @@ def multimodal_main():
         cluster_label_mapper=cluster_label,
     )
 
+    output_name = f"MultimodalFusion_{n_epochs}"
+    if ExperimentConfig.output_name is not None:
+        output_name = ExperimentConfig.output_name
+
     trainer = NTPTrainer(
         ntp_model=model_ntp,
         n_epochs=n_epochs,
         batch_size=batch_size,
         all_labels=all_unique_labels,
         eval_batch_size=eval_batch_size,
-        output_name=f"MultimodalFusion_{n_epochs}"
+        output_name=output_name
     )
 
     trainer.train(train, val)

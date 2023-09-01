@@ -253,7 +253,8 @@ def nli_deberta_main():
         n_epochs=n_epochs,
         batch_size=batch_size,
         all_labels=all_unique_labels,
-        eval_batch_size=eval_batch_size
+        eval_batch_size=eval_batch_size,
+        output_name=ExperimentConfig.output_name
     )
 
     trainer.train(train, val)

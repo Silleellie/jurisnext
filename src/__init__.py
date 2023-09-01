@@ -22,5 +22,6 @@ class ExperimentConfig:
     eval_batch_size: int = 2
     use_cluster_alg: bool = True
     checkpoint: Optional[str] = None
+    output_name: Optional[str] = None
     device: str = "cuda:0"
     random_state: int = 42

@@ -34,14 +34,18 @@ if __name__ == '__main__':
                         metavar='2')
     parser.add_argument('-seed', '--random_seed', type=int, default=42,
                         help='random seed', metavar='42')
-    parser.add_argument('-m', '--model', type=str, default='t5',
-                        help='t5 to finetune a t5 checkpoint for Next Title Prediction, '
+    parser.add_argument('-m', '--model', type=str, default='bert',
+                        help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
                              'bert to finetune a bert checkpoint for Next Title Prediction, '
                              'nli_deberta to finetune a deberta checkpoint for Next Title Prediction, '
-                             'multimodal to train a multimodal concatenation fusion architecture for Next Title Prediction',
-                        metavar='t5')
+                             'multimodal to train a multimodal concatenation fusion architecture '
+                             'for Next Title Prediction',
+                        metavar='bert')
     parser.add_argument('-ck', '--checkpoint', type=str, default=None,
                         help='Add checkpoint to use for train (e.g. google/flan-t5-small with t5 model)',
+                        metavar='None')
+    parser.add_argument('-o', '--output_name', type=str, default=None,
+                        help='Specify a custom name for the trained model which will be saved in the "models" dir',
                         metavar='None')
     parser.add_argument('--use_clusters', action=argparse.BooleanOptionalAction, default=False,
                         help='Use default clustering algorithm associated with the model during train and eval')
@@ -56,6 +60,7 @@ if __name__ == '__main__':
     ExperimentConfig.eval_batch_size = args.eval_batch_size
     ExperimentConfig.use_cluster_alg = args.use_clusters
     ExperimentConfig.checkpoint = args.checkpoint
+    ExperimentConfig.output_name = args.output_name
 
     if args.model in {"t5", "bert", "nli_deberta", "multimodal"}:
         model = args.model
