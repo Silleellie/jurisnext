@@ -69,12 +69,6 @@ class NTPTrainer:
 
             self.ntp_model.train()
 
-            # if no significant change happens to the loss after 10 epochs then early stopping
-            if no_change_counter == 10:
-                print("No significant improvement to validation loss in the last 10 epochs, early stopping!")
-                self.ntp_model.save(self.output_path)
-                break
-
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
             sampled_train = train_dataset.map(LegalDataset.perform_sampling,
                                               remove_columns=train_dataset.column_names,
@@ -119,13 +113,9 @@ class NTPTrainer:
                 if (min_val_loss - val_loss) > min_delta:
 
                     min_val_loss = val_loss
-                    no_change_counter = 0
                     self.ntp_model.save(self.output_path)
 
                     print(f"Validation loss is improved, model saved into {self.output_path}!")
-
-                else:
-                    no_change_counter += 1
 
     def validation(self, preprocessed_validation: datasets.Dataset):
 
