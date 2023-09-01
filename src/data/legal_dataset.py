@@ -11,7 +11,7 @@ import pandas as pd
 from datasets import Dataset, NamedSplit
 from sklearn.model_selection import train_test_split
 
-from src import RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR
+from src import RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, ExperimentConfig
 
 
 def clean_original_dataset(original_dataset: pd.DataFrame):
@@ -50,9 +50,9 @@ class LegalDataset:
     val_path: str = os.path.join(PROCESSED_DATA_DIR, "validation.pkl")
     test_list_path: str = os.path.join(PROCESSED_DATA_DIR, "test_list.pkl")
 
-    def __init__(self, n_test_sets: int = 10):
+    def __init__(self, n_test_set: int = 10):
 
-        self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_sets)
+        self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_set)
 
     @cached_property
     def all_unique_labels(self) -> np.ndarray[str]:
@@ -69,7 +69,7 @@ class LegalDataset:
 
         return pd.unique(all_labels)
 
-    def _generate_splits_and_sample(self, n_test_sets: int):
+    def _generate_splits_and_sample(self, n_test_set: int):
 
         print("Creating dataset splits...")
 
@@ -83,7 +83,7 @@ class LegalDataset:
 
         train_dataset = self._group_dataset(train_dataset, to_sample=False)
         val_dataset = self._group_dataset(val_dataset, to_sample=True)
-        test_dataset = [self._group_dataset(test_dataset, to_sample=True) for _ in range(n_test_sets)]
+        test_dataset = [self._group_dataset(test_dataset, to_sample=True) for _ in range(n_test_set)]
 
         train_dataset.to_pickle(self.train_path)
         val_dataset.to_pickle(self.val_path)
@@ -100,14 +100,14 @@ class LegalDataset:
         train_ids, test_ids = train_test_split(
             unique_case_ids,
             test_size=0.2,
-            random_state=RANDOM_STATE,
+            random_state=ExperimentConfig.random_state,
             shuffle=True
         )
 
         train_ids, val_ids = train_test_split(
             train_ids,
             test_size=0.1,
-            random_state=RANDOM_STATE,
+            random_state=ExperimentConfig.random_state,
             shuffle=True
         )
 
@@ -212,8 +212,11 @@ class LegalDataset:
         return obj
 
 
-if __name__ == "__main__":
-    
+def data_main():
+
+    if not os.path.isfile(os.path.join(RAW_DATA_DIR, "pre-processed_representations.pkl")):
+        raise FileNotFoundError("Please add 'pre-processed_representations.pkl' into 'data/raw' folder!")
+
     original_df_path = os.path.join(RAW_DATA_DIR, "pre-processed_representations.pkl")
     cleaned_df_output_path = os.path.join(INTERIM_DATA_DIR, "cleaned_dataframe.pkl")
 
@@ -223,16 +226,8 @@ if __name__ == "__main__":
     cleaned_df.to_pickle(cleaned_df_output_path)
 
     # the constructor will create and dump the splits
-    ds = LegalDataset()
-    dataset_dict = ds.get_hf_datasets()
+    LegalDataset(n_test_set=ExperimentConfig.n_test_set)
 
-    print(dataset_dict["train"])
-    print(dataset_dict["validation"])
-    print(dataset_dict["test"])
-
-    # train and val will be merged
-    dataset_dict_no_val = ds.get_hf_datasets(merge_train_val=True)
-
-    print(dataset_dict["train"])
-    print(dataset_dict["validation"])
-    print(dataset_dict["test"])
+    print(f"Train set pickled to {LegalDataset.train_path}!")
+    print(f"Validation set pickled to {LegalDataset.val_path}!")
+    print(f"Test set list pickled to {LegalDataset.test_list_path}!")
