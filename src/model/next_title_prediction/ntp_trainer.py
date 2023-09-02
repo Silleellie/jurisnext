@@ -115,17 +115,15 @@ class NTPTrainer:
 
                     if self.log_wandb:
                         wandb.log(
-                            {'train/loss': (train_loss / i)},
-                            step=train_step
+                            {'train/epoch': epoch + 1,
+                             'train/loss': (train_loss / i),
+                             'train/step': train_step}
                         )
-
-            if self.log_wandb:
-                wandb.log({"train/epoch": epoch + 1})
 
             pbar.close()
 
             if validation_dataset is not None:
-                val_step, val_loss = self.validation(preprocessed_validation=preprocessed_val, val_step=val_step)
+                val_loss, val_step = self.validation(preprocessed_validation=preprocessed_val, val_step=val_step, epoch=epoch)
 
                 # if there is a significant difference between the last minimum loss and the current one
                 # set it as the new min loss and save the model parameters
@@ -133,11 +131,11 @@ class NTPTrainer:
                     min_val_loss = val_loss
                     self.ntp_model.save(self.output_path)
 
-                    print(f"Validation loss is improved, model saved into {self.output_path}!")
+                    print(f"Validation loss improved, model saved into {self.output_path}!")
 
         print(" Train completed! Check models saved into 'models' dir ".center(100, "*"))
 
-    def validation(self, preprocessed_validation: datasets.Dataset, val_step: int):
+    def validation(self, preprocessed_validation: datasets.Dataset, val_step: int, epoch: int):
 
         print("VALIDATION")
         self.ntp_model.eval()
@@ -178,10 +176,10 @@ class NTPTrainer:
 
                 if self.log_wandb:
                     wandb.log(
-                        {'val/loss': (val_loss / i),
-                         f"val/{str(metric)}": result},
-
-                        step=val_step
+                        {'val/epoch': epoch + 1,
+                         'val/loss': (val_loss / i),
+                         f'val/{str(metric)}': result,
+                         'val/step': val_step}
                     )
 
         pbar_val.close()
