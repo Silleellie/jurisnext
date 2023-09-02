@@ -90,6 +90,16 @@ def t5_eval_main(exp_config: ExperimentConfig):
         test_task_list.append(ClusteredNTP())
         test_task_list.append(ClusteredNTPSideInfo())
 
+    # RANKING eval
+    ranking_task_results = {}
+
+    for test_task in test_task_list:
+        print("-------------------------------")
+        print(test_task)
+        avg_results_df, results_df = eval_ranking(evaluator, test_set, log_wandb,
+                                                  prefix_all_metrics=f"eval/{test_task}/all_metrics",
+                                                  prefix_avg_metrics=f"eval/{test_task}/avg_metrics")
+        ranking_task_results[str(test_task)] = (results_df, avg_results_df)
 
     # PREDICT ONLY THE NEXT TITLE
     ntp_model.generation_config.num_return_sequences = 1
@@ -100,35 +110,24 @@ def t5_eval_main(exp_config: ExperimentConfig):
         print("-------------------------------")
         print(test_task)
         avg_results_df, results_df = eval_classification(evaluator, test_set, log_wandb,
-                                                         prefix_all_metrics=f"eval_{test_task}/all_metrics",
-                                                         prefix_avg_metrics=f"eval_{test_task}/avg_metrics")
-        classification_task_results[test_task] = (results_df, avg_results_df)
-
-    # RANKING eval
-    ranking_task_results = {}
-
-    for test_task in test_task_list:
-        print("-------------------------------")
-        print(test_task)
-        avg_results_df, results_df = eval_ranking(evaluator, test_set, log_wandb,
-                                                  prefix_all_metrics=f"eval_{test_task}/all_metrics",
-                                                  prefix_avg_metrics=f"eval_{test_task}/avg_metrics")
-        ranking_task_results[test_task] = (results_df, avg_results_df)
+                                                         prefix_all_metrics=f"eval/{test_task}/all_metrics",
+                                                         prefix_avg_metrics=f"eval/{test_task}/avg_metrics")
+        classification_task_results[str(test_task)] = (results_df, avg_results_df)
 
     # SAVE RESULTS in reports/metrics
 
     os.makedirs(os.path.join(METRICS_DIR, ntp_model.config.name_or_path), exist_ok=True)
 
-    for task_name, (avg_results, all_results) in classification_task_results:
-
-        os.makedirs(os.path.join(METRICS_DIR, exp_config.exp_name, task_name), exist_ok=True)
-        all_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "classification_all_results.csv"))
-        avg_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "classification_avg_results.csv"))
-
-    for task_name, (all_results, avg_results) in ranking_task_results:
+    for task_name, (all_results, avg_results) in ranking_task_results.items():
 
         os.makedirs(os.path.join(METRICS_DIR, exp_config.exp_name, task_name), exist_ok=True)
         all_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "ranking_all_results.csv"))
         avg_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "ranking_avg_results.csv"))
+
+    for task_name, (avg_results, all_results) in classification_task_results.items():
+
+        os.makedirs(os.path.join(METRICS_DIR, exp_config.exp_name, task_name), exist_ok=True)
+        all_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "classification_all_results.csv"))
+        avg_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "classification_avg_results.csv"))
 
     print(f"CSV of the results are saved into {os.path.join(METRICS_DIR, exp_config.exp_name)}!")
