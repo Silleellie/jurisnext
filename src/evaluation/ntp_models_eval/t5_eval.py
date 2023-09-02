@@ -83,10 +83,13 @@ def t5_eval_main(exp_config: ExperimentConfig):
 
     test_task_list = [
         DirectNTP(),
-        DirectNTPSideInfo(),
-        ClusteredNTP(),
-        ClusteredNTPSideInfo()
+        DirectNTPSideInfo()
     ]
+
+    if exp_config.use_clusters:
+        test_task_list.append(ClusteredNTP())
+        test_task_list.append(ClusteredNTPSideInfo())
+
 
     # PREDICT ONLY THE NEXT TITLE
     ntp_model.generation_config.num_return_sequences = 1
