@@ -12,3 +12,4 @@ protobuf
 sentence-transformers
 wandb~=0.15.9
 cytoolz~=0.12.2
+matplotlib
