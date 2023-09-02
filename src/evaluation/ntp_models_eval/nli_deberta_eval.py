@@ -7,10 +7,11 @@ from src.evaluation.ntp_models_eval import eval_classification
 from src.model.next_title_prediction.ntp_models import NTPNliDeberta
 
 
-def nli_deberta_eval_main(model_name):
+def nli_deberta_eval_main(exp_config: ExperimentConfig):
 
-    eval_batch_size = ExperimentConfig.eval_batch_size
-    model_pth = os.path.join(MODELS_DIR, model_name)
+    eval_batch_size = exp_config.eval_batch_size
+    log_wandb = exp_config.log_wandb
+    model_pth = os.path.join(MODELS_DIR, exp_config.exp_name)
 
     ntp_model = NTPNliDeberta.load(model_pth)
     ds = LegalDataset.load_dataset()
@@ -18,8 +19,10 @@ def nli_deberta_eval_main(model_name):
 
     evaluator = NTPEvaluator(ntp_model, eval_batch_size=eval_batch_size)
 
-    avg_results, all_results = eval_classification(evaluator, test_set)
+    avg_results, all_results = eval_classification(evaluator, test_set, log_wandb)
 
-    os.makedirs(os.path.join(METRICS_DIR, model_name), exist_ok=True)
-    all_results.to_csv(os.path.join(METRICS_DIR, model_name, "classification_all_results.csv"))
-    avg_results.to_csv(os.path.join(METRICS_DIR, model_name, "classification_avg_results.csv"))
+    os.makedirs(os.path.join(METRICS_DIR, exp_config.exp_name), exist_ok=True)
+    all_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, "classification_all_results.csv"))
+    avg_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, "classification_avg_results.csv"))
+
+    print(f"CSV of the results are saved into {os.path.join(METRICS_DIR, exp_config.exp_name)}!")

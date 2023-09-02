@@ -1,5 +1,9 @@
 import argparse
 import os
+import re
+import signal
+import threading
+from pathlib import Path
 from typing import Literal
 
 import wandb
@@ -16,7 +20,7 @@ from src.evaluation.ntp_models_eval.nli_deberta_eval import nli_deberta_eval_mai
 from src.evaluation.ntp_models_eval.fusion_eval import multimodal_eval_main
 
 from src.utils import seed_everything, init_wandb
-from src import ExperimentConfig
+from src import ExperimentConfig, MODELS_DIR
 
 available_models_fns = {
     "t5": (NTPT5.default_checkpoint, t5_main, t5_eval_main),
@@ -93,15 +97,52 @@ if __name__ == '__main__':
 
     # split dataset and save to disk
     with init_wandb(exp_config.exp_name, 'data', log=exp_config.log_wandb):
+        wandb.config.update({
+            "n_test_set": exp_config.n_test_set,
+            "random_seed": exp_config.random_seed,
+
+            # these are hardcoded
+            "shuffle": True,
+            "split_test_size": 0.2,
+            "split_val_size": 0.1
+        })
+
         data_main(exp_config)
 
-    # # train model
-    # model = args.model
-    # model_train_func, model_eval_func = available_models_fns[model]
-    #
-    # with init_wandb(exp_config.exp_name, 'train', log=exp_config.log_wandb):
-    #     model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
-    #
-    # # eval the fit model
-    # with init_wandb(exp_config.exp_name, 'eval', log=exp_config.log_wandb):
-    #     model_eval_func(exp_config)
+    # train model
+    model = args.model
+    _, model_train_func, model_eval_func = available_models_fns[model]
+
+    with init_wandb(exp_config.exp_name, 'train', log=exp_config.log_wandb):
+        wandb.config.update({
+            "n_epochs": exp_config.epochs,
+            "train_batch_size": exp_config.train_batch_size,
+            "eval_batch_size": exp_config.eval_batch_size,
+            "random_seed": exp_config.random_seed,
+            "model": exp_config.model,
+            "checkpoint": exp_config.checkpoint,
+            "use_clusters": exp_config.use_clusters,
+            "device": exp_config.device
+        })
+
+        model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
+
+        model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
+        for file in os.listdir(model_path):
+
+            # load various config json of the model fit as artifact
+            if Path(file).suffix == ".json":
+                art = wandb.Artifact(name=file, type="hf_config")
+                art.add_file(os.path.join(model_path, file))
+
+                wandb.log_artifact(art)
+
+    # eval the fit model
+    with init_wandb(exp_config.exp_name, 'eval', log=exp_config.log_wandb):
+        wandb.config.update({
+            "n_test_set": exp_config.n_test_set,
+            "eval_batch_size": exp_config.eval_batch_size,
+            "random_seed": exp_config.random_seed,
+        })
+
+        model_eval_func(exp_config)

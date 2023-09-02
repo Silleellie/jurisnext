@@ -1,11 +1,23 @@
 import pandas as pd
+import wandb
 from cytoolz import merge_with
 
 from src.evaluation.metrics import Accuracy, Precision, Recall, F1
 from src.evaluation.ntp_evaluator import NTPEvaluator
 
 
-def eval_classification(evaluator: NTPEvaluator, test_set):
+def eval_classification(evaluator: NTPEvaluator, test_set,
+                        log_wandb: bool = False,
+                        prefix_all_metrics: str = "eval_all_metrics",
+                        prefix_avg_metrics: str = "eval_avg_metrics"):
+
+    metric_list = [
+        Accuracy(),
+        Precision(),
+        Recall(),
+        F1()
+    ]
+
     print("*******************************")
     results = []
     for i, test_split in enumerate(test_set):
@@ -13,12 +25,7 @@ def eval_classification(evaluator: NTPEvaluator, test_set):
 
         result = evaluator.evaluate(
             test_split,
-            metrics=[
-                Accuracy(),
-                Precision(),
-                Recall(),
-                F1()
-            ]
+            metrics=metric_list
         )
         results.append(result)
 
@@ -31,7 +38,18 @@ def eval_classification(evaluator: NTPEvaluator, test_set):
     results_df.index = [f"test_split_{i + 1}" for i in range(len(test_set))]
     avg_results_df.index = ["avg_results"]
 
+    print("\n\nAverage classification metrics results across all test sets:")
     print(avg_results_df)
     print("*******************************")
+
+    if log_wandb:
+        dict_to_log = {
+            f"{prefix_all_metrics}/metrics_table": wandb.Table(dataframe=results_df),
+        }
+
+        for metric in metric_list:
+            dict_to_log[f"{prefix_avg_metrics}/{metric}"] = avg_results_df[str(metric)][0].item()
+
+        wandb.log(dict_to_log)
 
     return avg_results_df, results_df

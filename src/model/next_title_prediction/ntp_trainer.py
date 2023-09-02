@@ -6,6 +6,7 @@ from typing import Optional
 
 import datasets
 import numpy as np
+import wandb
 
 from tqdm import tqdm
 
@@ -24,7 +25,8 @@ class NTPTrainer:
                  all_labels: np.ndarray,
                  device: str = 'cuda:0',
                  eval_batch_size: Optional[int] = None,
-                 output_name: Optional[str] = None):
+                 output_name: Optional[str] = None,
+                 log_wandb: bool = False):
 
         self.ntp_model = ntp_model
         self.n_epochs = n_epochs
@@ -32,6 +34,7 @@ class NTPTrainer:
         self.all_labels = all_labels
         self.eval_batch_size = eval_batch_size if eval_batch_size is not None else batch_size
         self.device = device
+        self.log_wandb = log_wandb
 
         # output name
         if output_name is None:
@@ -49,6 +52,11 @@ class NTPTrainer:
             unique_train_labels = np.unique(np.fromiter(flat_train_labels, dtype=object)).astype(str)
             self.ntp_model._train_clusters(unique_train_labels, self.all_labels)
 
+            if self.log_wandb:
+                wandb.config.update({
+                    "clusters": self.ntp_model.cluster_label_mapper.get_parameters()
+                })
+
         # validation set remains the same and should NOT be sampled at each epoch, otherwise
         # results are not comparable
         self.ntp_model.eval()  # eval because the "tokenize" function select different tasks depending on the mode
@@ -62,9 +70,10 @@ class NTPTrainer:
 
         # early stopping parameters
         min_val_loss = np.inf
-        no_change_counter = 0
         min_delta = 1e-4
 
+        train_step = 0
+        val_step = 0
         for epoch in range(0, self.n_epochs):
 
             self.ntp_model.train()
@@ -101,23 +110,34 @@ class NTPTrainer:
 
                 # we update the loss every 1% progress considering the total n° of batches
                 if (i % ceil(total_n_batch / 100)) == 0:
-                    pbar.set_description(f"Epoch {epoch}, Loss -> {(train_loss / i):.6f}")
+                    train_step += 1
+                    pbar.set_description(f"Epoch {epoch + 1}, Loss -> {(train_loss / i):.6f}")
+
+                    if self.log_wandb:
+                        wandb.log(
+                            {'train/loss': (train_loss / i)},
+                            step=train_step
+                        )
+
+            if self.log_wandb:
+                wandb.log({"train/epoch": epoch + 1})
 
             pbar.close()
 
             if validation_dataset is not None:
-                val_loss = self.validation(preprocessed_validation=preprocessed_val)
+                val_step, val_loss = self.validation(preprocessed_validation=preprocessed_val, val_step=val_step)
 
                 # if there is a significant difference between the last minimum loss and the current one
                 # set it as the new min loss and save the model parameters
                 if (min_val_loss - val_loss) > min_delta:
-
                     min_val_loss = val_loss
                     self.ntp_model.save(self.output_path)
 
                     print(f"Validation loss is improved, model saved into {self.output_path}!")
 
-    def validation(self, preprocessed_validation: datasets.Dataset):
+        print(" Train completed! Check models saved into 'models' dir ".center(100, "*"))
+
+    def validation(self, preprocessed_validation: datasets.Dataset, val_step: int):
 
         print("VALIDATION")
         self.ntp_model.eval()
@@ -144,7 +164,7 @@ class NTPTrainer:
 
             # we update the loss every 1% progress considering the total n° of batches
             if (i % ceil(total_n_batch / 100)) == 0:
-
+                val_step += 1
                 preds_so_far = np.array(total_preds)
                 truths_so_far = np.array(total_truths)
 
@@ -156,8 +176,16 @@ class NTPTrainer:
                 pbar_val.set_description(f"Val Loss -> {(val_loss / i):.6f}, "
                                          f"{metric} -> {result:.3f}")
 
+                if self.log_wandb:
+                    wandb.log(
+                        {'val/loss': (val_loss / i),
+                         f"val/{str(metric)}": result},
+
+                        step=val_step
+                    )
+
         pbar_val.close()
 
         # val_loss is computed for the entire batch, not for each sample, that's why is safe
         # to use pbar_val
-        return val_loss / len(pbar_val)
+        return val_loss / len(pbar_val), val_step

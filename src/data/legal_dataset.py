@@ -218,7 +218,6 @@ class LegalDataset:
 
 
 def plot_save_label_counts(ds_frame: pd.DataFrame, fig_path: str):
-    
     ax = ds_frame.head(30).plot.barh(x='titles', y='count', rot=0, figsize=(10.4, 8))
 
     # so that top elements are in the upper part of the diagram
@@ -240,34 +239,29 @@ def plot_save_label_counts(ds_frame: pd.DataFrame, fig_path: str):
 
 def log_parameters(ds: LegalDataset, exp_name: str):
     parameters_to_log = {
-        "n_test_set": len(ds.test_df_list),
-        "random_seed": ds.random_seed,
-        "shuffle": True,
-        "split_test_size": 0.2,
-        "split_val_size": 0.1,
-        "train_set_n_cases": ds.train_df.shape[0],
-        "val_set_n_cases": ds.val_df.shape[0],
-        "test_set_n_cases": ds.test_df_list[0].shape[0],
-        "original_title_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
-                                                                     exp_name,
-                                                                     "original_titles_counts.png"),
-                                                        mode="RGB"),
-        "train_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
-                                                            exp_name,
-                                                            "train_titles_counts.png"),
-                                               mode="RGB"),
-        "val_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
-                                                          exp_name,
-                                                          "val_titles_counts.png"),
-                                             mode="RGB"),
-        "test_distribution_plot": [wandb.Image(os.path.join(REPORTS_DIR,
-                                                            exp_name,
-                                                            "test_sets",
-                                                            f"test_{test_split_idx}_"
-                                                            f"titles_counts.png"),
-                                               mode="RGB",
-                                               caption=f"Test idx: {test_split_idx}")
-                                   for test_split_idx in range(len(ds.test_df_list))]
+        "data/train_set_n_cases": ds.train_df.shape[0],
+        "data/val_set_n_cases": ds.val_df.shape[0],
+        "data/test_set_n_cases": ds.test_df_list[0].shape[0],
+        "data/original_title_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                                          exp_name,
+                                                                          "original_titles_counts.png"),
+                                                             mode="RGB"),
+        "data/train_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                                 exp_name,
+                                                                 "train_titles_counts.png"),
+                                                    mode="RGB"),
+        "data/val_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                               exp_name,
+                                                               "val_titles_counts.png"),
+                                                  mode="RGB"),
+        "data/test_distribution_plot": [wandb.Image(os.path.join(REPORTS_DIR,
+                                                                 exp_name,
+                                                                 "test_sets",
+                                                                 f"test_{test_split_idx}_"
+                                                                 f"titles_counts.png"),
+                                                    mode="RGB",
+                                                    caption=f"Test idx: {test_split_idx}")
+                                        for test_split_idx in range(len(ds.test_df_list))]
     }
 
     wandb.log(parameters_to_log)

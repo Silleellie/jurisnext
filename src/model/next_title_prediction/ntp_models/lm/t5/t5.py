@@ -266,7 +266,8 @@ def t5_main(exp_config: ExperimentConfig):
         batch_size=batch_size,
         all_labels=all_unique_labels,
         eval_batch_size=eval_batch_size,
-        output_name=exp_config.exp_name
+        output_name=exp_config.exp_name,
+        log_wandb=exp_config.log_wandb
     )
 
     train = dataset["train"]

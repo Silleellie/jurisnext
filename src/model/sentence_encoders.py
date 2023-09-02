@@ -42,6 +42,10 @@ class SentenceEncoder(ABC):
 
         return encoded_sentence if as_tensor else encoded_sentence.cpu().numpy()
 
+    @abstractmethod
+    def get_parameters(self):
+        raise NotImplementedError
+
 
 class SentenceTransformerEncoder(SentenceEncoder):
 
@@ -50,9 +54,17 @@ class SentenceTransformerEncoder(SentenceEncoder):
         super().__init__(batch_size=batch_size, device=device)
 
         self.model = SentenceTransformer(model_name, device=self.device, **model_kwargs)
+        self.model_name = model_name
 
     def encode_batch(self, batch_sentences: List[str]) -> torch.Tensor:
         return self.model.encode(batch_sentences, batch_size=self.batch_size, convert_to_tensor=True)
+
+    def get_parameters(self):
+        return {
+            "model_name_or_path": self.model_name,
+            "batch_size": self.batch_size,
+            "device": self.device
+        }
 
 
 class BertSentenceEncoder(SentenceEncoder):
@@ -78,6 +90,7 @@ class BertSentenceEncoder(SentenceEncoder):
 
         self.tokenizer = BertTokenizerFast.from_pretrained(model_name)
         self.model = BertModel.from_pretrained(model_name, output_hidden_states=True, **model_kwargs).to(self.device)
+        self.model_name = model_name
         self.hidden_states_num = hidden_states_num
 
     def _fuse_token_sum(self, *hidden_states: torch.Tensor):
@@ -115,3 +128,13 @@ class BertSentenceEncoder(SentenceEncoder):
         hidden_states_fused = self.hidden_states_fusion_strat(list_hs_encoded_sentences)
 
         return hidden_states_fused
+
+    def get_parameters(self):
+        return {
+            "model_name_or_path": self.model_name,
+            "hidden_states_num": self.hidden_states_num,
+            "hidden_states_fusion_strat": self.hidden_states_fusion_strat,
+            "token_fusion_strat": self.token_fusion_strat,
+            "batch_size": self.batch_size,
+            "device": self.device
+        }

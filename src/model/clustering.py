@@ -24,6 +24,10 @@ class ClusterAlg(ABC):
     def predict(self, sentences_encoded: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
+    @abstractmethod
+    def get_parameters(self) -> dict:
+        raise NotImplementedError
+
 
 class KMeansAlg(ClusterAlg):
 
@@ -37,6 +41,17 @@ class KMeansAlg(ClusterAlg):
     def predict(self, sentences_encoded: np.ndarray) -> np.ndarray:
         return self.alg.predict(sentences_encoded)
 
+    def get_parameters(self) -> dict:
+        return {
+            "n_clusters": self.alg.n_clusters,
+            "init": self.alg.init,
+            "n_init": self.alg.n_init,
+            "max_iter": self.alg.max_iter,
+            "tol": self.alg.tol,
+            "random_state": self.alg.random_state,
+            "algorithm": self.alg.algorithm
+        }
+
 
 class KMedoidsAlg(ClusterAlg):
     def __init__(self, **kwargs):
@@ -48,6 +63,16 @@ class KMedoidsAlg(ClusterAlg):
 
     def predict(self, sentences_encoded: np.ndarray) -> np.ndarray:
         return self.alg.predict(sentences_encoded)
+
+    def get_parameters(self) -> dict:
+        return {
+            "n_clusters": self.alg.n_clusters,
+            "metric": self.alg.metric,
+            "method": self.alg.method,
+            "init": self.alg.init,
+            "max_iter": self.alg.max_iter,
+            "random_state": self.alg.random_state
+        }
 
 
 class ClusterLabelMapper:
@@ -95,6 +120,12 @@ class ClusterLabelMapper:
         bool_mask = np.where(self.cluster_arr == clusters)
 
         return self.labels_arr[bool_mask]
+
+    def get_parameters(self) -> dict:
+        return {
+            "sentence_encoder": self.sentence_encoder.get_parameters(),
+            "cluster_alg": self.clustering_alg.get_parameters()
+        }
 
 
 if __name__ == "__main__":
