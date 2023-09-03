@@ -44,7 +44,7 @@ def log_wandb(exp_config: ExperimentConfig, parameters_to_log: dict):
 @contextmanager
 def init_wandb(exp_name: str, job_type: Literal['data', 'train', 'eval'], log: bool):
     if log:
-        with wandb.init(entity="silleellie", project="BD-Next-Title-Prediction", job_type=job_type, group=exp_name):
+        with wandb.init(project="BD-Next-Title-Prediction", job_type=job_type, group=exp_name):
             yield
     else:
         yield
