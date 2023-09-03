@@ -110,15 +110,21 @@ class NTPTrainer:
 
                 # we update the loss every 1% progress considering the total n° of batches
                 if (i % ceil(total_n_batch / 100)) == 0:
-                    train_step += 1
                     pbar.set_description(f"Epoch {epoch + 1}, Loss -> {(train_loss / i):.6f}")
 
                     if self.log_wandb:
-                        wandb.log(
-                            {'train/epoch': epoch + 1,
+
+                        to_log = {
                              'train/loss': (train_loss / i),
-                             'train/step': train_step}
-                        )
+                             'train/step': train_step
+                        }
+
+                        if i == total_n_batch:
+                            to_log['train/epoch'] = epoch + 1
+
+                        wandb.log(to_log)
+
+                    train_step += 1
 
             pbar.close()
 
@@ -162,7 +168,6 @@ class NTPTrainer:
 
             # we update the loss every 1% progress considering the total n° of batches
             if (i % ceil(total_n_batch / 100)) == 0:
-                val_step += 1
                 preds_so_far = np.array(total_preds)
                 truths_so_far = np.array(total_truths)
 
@@ -175,12 +180,15 @@ class NTPTrainer:
                                          f"{metric} -> {result:.3f}")
 
                 if self.log_wandb:
-                    wandb.log(
-                        {'val/epoch': epoch + 1,
-                         'val/loss': (val_loss / i),
-                         f'val/{str(metric)}': result,
-                         'val/step': val_step}
-                    )
+
+                    to_log = {'val/loss': (val_loss / i), f'val/{str(metric)}': result, 'val/step': val_step}
+
+                    if i == total_n_batch:
+                        to_log['val/epoch'] = epoch + 1
+
+                    wandb.log(to_log)
+
+                val_step += 1
 
         pbar_val.close()
 
