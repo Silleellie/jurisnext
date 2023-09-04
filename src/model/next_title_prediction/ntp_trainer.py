@@ -75,6 +75,8 @@ class NTPTrainer:
 
         train_step = 0
         val_step = 0
+        epoch = -1
+
         for epoch in range(0, self.n_epochs):
 
             self.ntp_model.train()
@@ -148,6 +150,11 @@ class NTPTrainer:
                     print(f"Validation loss improved, model saved into {self.output_path}!")
                 else:
                     no_change_counter += 1
+
+        if self.log_wandb:
+            wandb.log({
+                'best_model_epoch': epoch + 1
+            })
 
         print(" Train completed! Check models saved into 'models' dir ".center(100, "*"))
 
