@@ -201,7 +201,7 @@ def bert_main(exp_config: ExperimentConfig):
         id2label={i: x for i, x in enumerate(all_unique_labels)},
 
         labels_weights=list(labels_weights),
-        device='cuda:0'
+        device=device
     )
 
     trainer = NTPTrainer(
