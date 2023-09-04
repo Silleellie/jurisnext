@@ -70,6 +70,7 @@ class NTPTrainer:
 
         # early stopping parameters
         min_val_loss = np.inf
+        no_change_counter = 0
         min_delta = 1e-4
 
         train_step = 0
@@ -77,6 +78,12 @@ class NTPTrainer:
         for epoch in range(0, self.n_epochs):
 
             self.ntp_model.train()
+
+            # if no significant change happens to the loss after 10 epochs then early stopping
+            if no_change_counter == 10:
+                print("No significant improvement to validation loss in the last 10 epochs, early stopping!")
+                self.ntp_model.save(self.output_path)
+                break
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
             sampled_train = train_dataset.map(LegalDataset.perform_sampling,
@@ -134,10 +141,13 @@ class NTPTrainer:
                 # if there is a significant difference between the last minimum loss and the current one
                 # set it as the new min loss and save the model parameters
                 if (min_val_loss - val_loss) > min_delta:
+                    no_change_counter = 0
                     min_val_loss = val_loss
                     self.ntp_model.save(self.output_path)
 
                     print(f"Validation loss improved, model saved into {self.output_path}!")
+                else:
+                    no_change_counter += 1
 
         print(" Train completed! Check models saved into 'models' dir ".center(100, "*"))
 
