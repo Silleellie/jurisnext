@@ -252,7 +252,7 @@ def t5_main(exp_config: ExperimentConfig):
         training_tasks=train_tasks,
         test_task=test_task,
         all_unique_labels=list(all_unique_labels),
-        device='cuda:0'
+        device=device
     )
 
     new_words = ['<', '>']

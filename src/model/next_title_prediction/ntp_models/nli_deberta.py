@@ -246,7 +246,7 @@ def nli_deberta_main(exp_config: ExperimentConfig):
         pretrained_model_or_pth=checkpoint,
         all_unique_labels=list(all_unique_labels),
         cluster_label_mapper=cluster_label,
-        device='cuda:0'
+        device=device
     )
 
     trainer = NTPTrainer(

@@ -372,7 +372,7 @@ def multimodal_main(exp_config: ExperimentConfig):
             label2id={x: i for i, x in enumerate(all_unique_labels)},
             id2label={i: x for i, x in enumerate(all_unique_labels)},
             labels_weights=list(labels_weights),
-            device='cuda:0'
+            device=device
         ),
     )
 
