@@ -253,8 +253,9 @@ class NTPMultimodalFusion(NTPModel):
             image_repr.append(cluster_repr_image_row)
 
         # unsqueeze to add channel and convert to [0, 1] range
+        image_repr = np.vstack(image_repr)
         max_image_repr_value = np.max(image_repr)
-        image_repr = torch.from_numpy(np.vstack(image_repr)).unsqueeze(0).float().div(max_image_repr_value)
+        image_repr = torch.from_numpy(image_repr).unsqueeze(0).float().div(max_image_repr_value)
         tokenizer_output = self.tokenizer(title_str, truncation=True)
 
         input_dict["input_ids"] = tokenizer_output["input_ids"]
