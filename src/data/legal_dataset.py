@@ -72,7 +72,7 @@ class LegalDataset:
                 test_df["immediate_next_title"].tolist()
             )
 
-        return pd.unique(all_labels)
+        return pd.unique(np.array(all_labels))
 
     def _generate_splits_and_sample(self, n_test_set: int):
 

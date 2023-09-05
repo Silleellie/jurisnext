@@ -62,7 +62,7 @@ def eval_ranking(evaluator, test_set,
         }
 
         for metric in metric_list:
-            dict_to_log[f"{prefix_avg_metrics}/{metric}"] = avg_results_df[str(metric)][0].item()
+            dict_to_log[f"{prefix_avg_metrics}/{metric}"] = avg_results_df.iloc[0][str(metric)].item()
 
         wandb.log(dict_to_log)
 
