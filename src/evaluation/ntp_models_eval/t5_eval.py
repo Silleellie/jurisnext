@@ -97,8 +97,8 @@ def t5_eval_main(exp_config: ExperimentConfig):
         print("-------------------------------")
         print(test_task)
         avg_results_df, results_df = eval_ranking(evaluator, test_set, log_wandb,
-                                                  prefix_all_metrics=f"eval/{test_task}/all_metrics",
-                                                  prefix_avg_metrics=f"eval/{test_task}/avg_metrics")
+                                                  prefix_all_metrics=f"eval_rank/{test_task}/all_metrics",
+                                                  prefix_avg_metrics=f"eval_rank/{test_task}/avg_metrics")
         ranking_task_results[str(test_task)] = (results_df, avg_results_df)
 
     # PREDICT ONLY THE NEXT TITLE
@@ -110,8 +110,8 @@ def t5_eval_main(exp_config: ExperimentConfig):
         print("-------------------------------")
         print(test_task)
         avg_results_df, results_df = eval_classification(evaluator, test_set, log_wandb,
-                                                         prefix_all_metrics=f"eval/{test_task}/all_metrics",
-                                                         prefix_avg_metrics=f"eval/{test_task}/avg_metrics")
+                                                         prefix_all_metrics=f"eval_classification/{test_task}/all_metrics",
+                                                         prefix_avg_metrics=f"eval_classification/{test_task}/avg_metrics")
         classification_task_results[str(test_task)] = (results_df, avg_results_df)
 
     # SAVE RESULTS in reports/metrics
