@@ -6,7 +6,7 @@ from typing import List
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from transformers import DebertaV2ForSequenceClassification, DebertaConfig
+from transformers import DebertaV2ForSequenceClassification, DebertaV2Config
 
 from src import ExperimentConfig
 from src.data.legal_dataset import LegalDataset
@@ -16,7 +16,7 @@ from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 from src.model.sentence_encoders import SentenceTransformerEncoder
 
 
-class NTPNliDebertaConfig(DebertaConfig, NTPConfig):
+class NTPNliDebertaConfig(DebertaV2Config, NTPConfig):
 
     def __init__(self,
                  template: str = "Next paragraph title is {}",
@@ -24,7 +24,7 @@ class NTPNliDebertaConfig(DebertaConfig, NTPConfig):
                  all_unique_labels: List[str] = None,
                  device: str = "cpu",
                  **kwargs):
-        DebertaConfig.__init__(self, **kwargs)
+        DebertaV2Config.__init__(self, **kwargs)
         NTPConfig.__init__(self, device)
 
         self.validation_mini_batch_size = validation_mini_batch_size
