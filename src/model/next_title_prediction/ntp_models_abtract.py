@@ -21,6 +21,7 @@ class NTPConfig:
 class NTPModel(ABC):
 
     model_class = None
+    tokenizer_class = AutoTokenizer
 
     def __init__(self,
                  model: PreTrainedModel,
@@ -92,7 +93,7 @@ class NTPModel(ABC):
             pretrained_model_name_or_path=save_path
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer = cls.tokenizer_class.from_pretrained(
             pretrained_model_name_or_path=save_path
         )
 
@@ -126,7 +127,7 @@ class NTPModelHF(NTPModel):
 
         self.model_class.config_class = self.config_class
         model = self.model_class.from_pretrained(pretrained_model_or_pth, **config_kwargs)
-        tokenizer = AutoTokenizer.from_pretrained(pretrained_model_or_pth)
+        tokenizer = self.tokenizer_class.from_pretrained(pretrained_model_or_pth)
 
         super().__init__(model, tokenizer, cluster_label_mapper)
 

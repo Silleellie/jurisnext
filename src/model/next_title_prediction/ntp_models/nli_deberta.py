@@ -6,7 +6,7 @@ from typing import List
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from transformers import DebertaV2ForSequenceClassification, DebertaV2Config
+from transformers import DebertaV2ForSequenceClassification, DebertaV2Config, DebertaV2Tokenizer
 
 from src import ExperimentConfig
 from src.data.legal_dataset import LegalDataset
@@ -38,6 +38,7 @@ class NTPNliDebertaConfig(DebertaV2Config, NTPConfig):
 class NTPNliDeberta(NTPModelHF):
 
     model_class = DebertaV2ForSequenceClassification
+    tokenizer_class = DebertaV2Tokenizer
     config_class = NTPNliDebertaConfig
     default_checkpoint = 'cross-encoder/nli-deberta-v3-xsmall'
 
