@@ -75,7 +75,7 @@ class NTPTrainer:
 
         train_step = 0
         val_step = 0
-        epoch = -1
+        best_epoch = -1
 
         for epoch in range(0, self.n_epochs):
 
@@ -84,7 +84,6 @@ class NTPTrainer:
             # if no significant change happens to the loss after 10 epochs then early stopping
             if no_change_counter == 10:
                 print("No significant improvement to validation loss in the last 10 epochs, early stopping!")
-                self.ntp_model.save(self.output_path)
                 break
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
@@ -143,6 +142,7 @@ class NTPTrainer:
                 # if there is a significant difference between the last minimum loss and the current one
                 # set it as the new min loss and save the model parameters
                 if (min_val_loss - val_loss) > min_delta:
+                    best_epoch = epoch + 1
                     no_change_counter = 0
                     min_val_loss = val_loss
                     self.ntp_model.save(self.output_path)
@@ -153,7 +153,7 @@ class NTPTrainer:
 
         if self.log_wandb:
             wandb.log({
-                'best_model_epoch': epoch + 1
+                'best_model_epoch': best_epoch
             })
 
         print(" Train completed! Check models saved into 'models' dir ".center(100, "*"))
