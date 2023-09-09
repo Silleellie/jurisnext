@@ -77,6 +77,8 @@ class NTPTrainer:
         val_step = 0
         best_epoch = -1
 
+        optimizer = self.ntp_model.get_suggested_optimizer()
+
         for epoch in range(0, self.n_epochs):
 
             self.ntp_model.train()
@@ -101,8 +103,6 @@ class NTPTrainer:
                         total=total_n_batch)
 
             train_loss = 0
-
-            optimizer = self.ntp_model.get_suggested_optimizer()
 
             for i, batch in enumerate(pbar, start=1):
 
