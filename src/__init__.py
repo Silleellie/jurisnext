@@ -30,4 +30,5 @@ class ExperimentConfig:
     use_clusters: bool = False
     log_wandb: bool = False
     n_test_set: int = 10
+    ngram_label: Optional[int] = None
     device: str = "cuda:0"

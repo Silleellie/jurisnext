@@ -1,3 +1,4 @@
+import re
 import os
 import pickle
 import random
@@ -42,6 +43,16 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
     cleaned_dataset["rel_keywords"] = cleaned_dataset["rel_keywords"].apply(", ".join)
     # some documents have no paragraph information (thus no relevant keywords), we explicitate this
     cleaned_dataset["rel_keywords"] = cleaned_dataset["rel_keywords"].replace("", "!!No paragraph content!!")
+
+    return cleaned_dataset
+
+
+def grouping_labels(cleaned_dataset: pd.DataFrame, cutoff: int = None):
+
+    tokenizer_pattern = r"<[^>]+>|\S+"
+
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x:
+                                                              ' '.join(re.findall(tokenizer_pattern, x)[:cutoff]))
 
     return cleaned_dataset
 
@@ -277,7 +288,8 @@ def data_main(exp_config: ExperimentConfig):
     original_df: pd.DataFrame = pd.read_pickle(original_df_path)
     cleaned_df = clean_original_dataset(original_df)
 
-    cleaned_df.to_pickle(cleaned_df_output_path)
+    grouped_df = grouping_labels(cleaned_df, exp_config.ngram_label)
+    grouped_df.to_pickle(cleaned_df_output_path)
 
     # the constructor will create and dump the splits
     ds = LegalDataset(n_test_set=exp_config.n_test_set, random_seed=exp_config.random_seed)
@@ -286,7 +298,7 @@ def data_main(exp_config: ExperimentConfig):
     os.makedirs(os.path.join(REPORTS_DIR, exp_config.exp_name), exist_ok=True)
 
     # PLOT ORIGINAL DATASET TITLES DISTRIBUTION
-    cleaned_df_to_plot = cleaned_df.rename(columns={"title": "titles"})
+    cleaned_df_to_plot = grouped_df.rename(columns={"title": "titles"})
     labels_count = cleaned_df_to_plot["titles"].value_counts().reset_index()
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
