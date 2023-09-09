@@ -55,10 +55,12 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
     cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"_person >", r"<person>", x))
 
     # appellatives start of sentence
-    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'^(mr|ms)(?=\s+|$)', '<appellative>', x))
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(
+        lambda x: re.sub(r'^(mr|ms)(?=\s+|$)', '<appellative>', x))
 
     # appellatives middle of sentence
-    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'\s+(mr|ms)(?=\s+|$)', '<appellative>', x))
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(
+        lambda x: re.sub(r'\s+(mr|ms)(?=\s+|$)', '<appellative>', x))
 
     # add space when missing around <>
     cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'(?<=\S)<([^>]+)>', r' <\g<1>>', x))
@@ -79,13 +81,13 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
 
 
 def grouping_labels(cleaned_dataset: pd.DataFrame, cutoff: int = None):
-
     tokenizer_pattern = r"<[^>]+>|\S+"
 
-    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x:
-                                                              ' '.join(re.findall(tokenizer_pattern, x)[:cutoff]))
+    grouped_df = cleaned_dataset.copy()
+    grouped_df["title"] = grouped_df["title"].apply(lambda x:
+                                                    ' '.join(re.findall(tokenizer_pattern, x)[:cutoff]))
 
-    return cleaned_dataset
+    return grouped_df
 
 
 class LegalDataset:
@@ -380,4 +382,4 @@ def data_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    data_main(ExperimentConfig("we", "we", "we"))
+    data_main(ExperimentConfig("we", "we", "we", ngram_label=2))
