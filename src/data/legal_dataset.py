@@ -44,6 +44,37 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
     # some documents have no paragraph information (thus no relevant keywords), we explicitate this
     cleaned_dataset["rel_keywords"] = cleaned_dataset["rel_keywords"].replace("", "!!No paragraph content!!")
 
+    # from list of sentences to single paragraph with \n separator
+    cleaned_dataset["text"] = cleaned_dataset["text"].apply("\n".join)
+    # some documents have no paragraph information, we explicitate this
+    cleaned_dataset["text"] = cleaned_dataset["text"].replace("", "!!No paragraph content!!")
+
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"<\s+org", r"<org>", x))
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"<\s+person", r"<person>", x))
+
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"_person >", r"<person>", x))
+
+    # appellatives start of sentence
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'^(mr|ms)(?=\s+|$)', '<appellative>', x))
+
+    # appellatives middle of sentence
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'\s+(mr|ms)(?=\s+|$)', '<appellative>', x))
+
+    # add space when missing around <>
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'(?<=\S)<([^>]+)>', r' <\g<1>>', x))
+
+    # add space when missing around <>
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'<([^>]+)>(?=\S)', r'<\g<1>> ', x))
+
+    # dh 1 -> dh1 (they are both in the dataset)
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'dh(\d+)', r'dh \g<1>', x))
+
+    # caseNUMBER -> case NUMBER
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'case(\d+)', r'case \g<1>', x))
+
+    # numbers
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'(?<=\s)[ct]?\d+', '<number>', x))
+
     return cleaned_dataset
 
 
