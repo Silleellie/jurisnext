@@ -34,14 +34,15 @@ class DirectNTP(Task):
     templates = {
         0: PromptTarget(
             input_prompt="DirectNTP:\n\n"
-                         "Predict the next element of the following sequence:\n"
+                         "Predict the next element of the following sequence ->\n"
                          "{}",
             target_text="{}"
         ),
         1: PromptTarget(
             input_prompt="DirectNTP:\n\n"
-                         "Previous titles:\n"
-                         "{}",
+                         "Previous titles ->\n"
+                         "{}\n"
+                         "Next title is ",
             target_text="{}"
         )
     }
@@ -49,7 +50,7 @@ class DirectNTP(Task):
     def __call__(self, title_sequence, target_title, **kwargs):
 
         # random select of string separator for titles sequence and the prompt to use
-        separator = " - " if random.getrandbits(1) else " ; "
+        separator = " , " if random.getrandbits(1) else " ; "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
 
         list_to_text = separator.join(title_sequence)
@@ -63,18 +64,19 @@ class DirectNTPSideInfo(Task):
     templates = {
         0: PromptTarget(
             input_prompt="DirectNTPSideInfo:\n\n"
-                         "Predict the next element of the following sequence:\n"
+                         "Predict the next element of the following sequence ->\n"
                          "{}\n"
-                         "Relevant keywords for each element of the sequence are:\n"
+                         "Relevant keywords for each element of the sequence are ->\n"
                          "{}",
             target_text="{}"
         ),
         1: PromptTarget(
             input_prompt="DirectNTPSideInfo:\n\n"
-                         "Previous titles:\n"
+                         "Previous titles ->\n"
                          "{}\n"
-                         "Context:\n"
-                         "{}",
+                         "Context ->\n"
+                         "{}"
+                         "Next title is ",
             target_text="{}"
         )
     }
@@ -89,7 +91,7 @@ class DirectNTPSideInfo(Task):
         reduced_rel_keywords = [random.choice(rel_keywords.split(", ")) for rel_keywords in rel_keywords_seq]
 
         # random select of string separator for titles sequence and the prompt to use
-        separator = " - " if random.getrandbits(1) else " ; "
+        separator = " , " if random.getrandbits(1) else " ; "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
 
         list_to_text = separator.join(title_sequence)
@@ -106,16 +108,16 @@ class BoolNTP(Task):
     templates = {
         0: PromptTarget(
             input_prompt="BoolNTP:\n\n"
-                         "Given the following title sequences:\n"
+                         "Given the following title sequences ->\n"
                          "{}\n\n"
-                         "Is this the next title? {}",
+                         "Is this the next title (answer yes/no)? {} ",
             target_text="{}"
         ),
         1: PromptTarget(
             input_prompt="BoolNTP:\n\n"
-                         "Previous titles:\n"
+                         "Previous titles ->\n"
                          "{}\n\n"
-                         "Next title: {}",
+                         "Answer yes/no if this is the next title -> {}",
             target_text="{}"
         )
     }
@@ -128,7 +130,7 @@ class BoolNTP(Task):
 
     def __call__(self, title_sequence, target_title, **kwargs):
         # random select of string separator for titles sequence and the prompt to use
-        separator = " - " if random.getrandbits(1) else " ; "
+        separator = " , " if random.getrandbits(1) else " ; "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
 
         # if randomly true, the next title is the correct one,
@@ -151,20 +153,20 @@ class ClusteredNTP(Task):
     templates = {
         0: PromptTarget(
             input_prompt="ClusteredNTP:\n\n"
-                         "The title sequence is the following:\n"
+                         "The title sequence is the following ->\n"
                          "{}\n\n"
                          "The next title is in cluster {}, what is the next element of the sequence?\n"
-                         "Choose one among the following options:\n"
+                         "Choose one among the following options ->\n"
                          "{}",  # bullet list
             target_text="{}"
         ),
         1: PromptTarget(
             input_prompt="ClusteredNTP:\n\n"
-                         "Previous titles:\n"
+                         "Previous titles ->\n"
                          "{}\n"
-                         "Next title cluster:\n"
+                         "Next title cluster ->\n"
                          "{}\n\n"
-                         "Chose the next title from the followings:\n"
+                         "Chose the next title from the followings ->\n"
                          "{}",
             target_text="{}"
         )
@@ -179,7 +181,7 @@ class ClusteredNTP(Task):
         next_possible_titles = cluster_mapper.get_labels_from_cluster(next_cluster)
 
         # random select of string separator for titles sequence and the prompt to use
-        separator = " - " if random.getrandbits(1) else " ; "
+        separator = " , " if random.getrandbits(1) else " ; "
         bullet_notation = " - " if random.getrandbits(1) else " * "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
 
@@ -197,24 +199,24 @@ class ClusteredNTPSideInfo(Task):
     templates = {
         0: PromptTarget(
             input_prompt="ClusteredNTPSideInfo:\n\n"
-                         "The title sequence is the following:\n"
+                         "The title sequence is the following ->\n"
                          "{}\n"
-                         "Relevant keywords of the sequence are:\n"
+                         "Relevant keywords of the sequence are ->\n"
                          "{}\n"
                          "The next title is in cluster {}, what is the next element of the sequence?\n"
-                         "Choose one among the following options:\n"
+                         "Choose one among the following options ->\n"
                          "{}",  # bullet list
             target_text="{}"
         ),
         1: PromptTarget(
             input_prompt="ClusteredNTPSideInfo:\n\n"
-                         "Previous titles:\n"
+                         "Previous titles ->\n"
                          "{}\n"
-                         "Relevant keywords:\n"
+                         "Relevant keywords ->\n"
                          "{}\n"
-                         "Next title cluster:\n"
+                         "Next title cluster ->\n"
                          "{}\n"
-                         "Chose one of the followings:\n"
+                         "Chose one of the followings ->\n"
                          "{}",
             target_text="{}"
         )
@@ -235,7 +237,7 @@ class ClusteredNTPSideInfo(Task):
         next_possible_titles = cluster_mapper.get_labels_from_cluster(next_cluster)
 
         # random select of string separator for titles sequence and the prompt to use
-        separator = " - " if random.getrandbits(1) else " ; "
+        separator = " , " if random.getrandbits(1) else " ; "
         bullet_notation = " - " if random.getrandbits(1) else " * "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
 
