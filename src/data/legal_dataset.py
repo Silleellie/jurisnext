@@ -44,11 +44,6 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
     # some documents have no paragraph information (thus no relevant keywords), we explicitate this
     cleaned_dataset["rel_keywords"] = cleaned_dataset["rel_keywords"].replace("", "!!No paragraph content!!")
 
-    # from list of sentences to single paragraph with \n separator
-    cleaned_dataset["text"] = cleaned_dataset["text"].apply("\n".join)
-    # some documents have no paragraph information, we explicitate this
-    cleaned_dataset["text"] = cleaned_dataset["text"].replace("", "!!No paragraph content!!")
-
     cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"<\s+org", r"<org>", x))
     cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"<\s+person", r"<person>", x))
 
