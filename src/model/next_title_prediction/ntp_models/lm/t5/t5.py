@@ -253,11 +253,6 @@ def t5_main(exp_config: ExperimentConfig):
         device=device
     )
 
-    new_words = ['<', '>']
-
-    model_ntp.tokenizer.add_tokens(new_words)
-    model_ntp.model.resize_token_embeddings(len(model_ntp.tokenizer))
-
     trainer = NTPTrainer(
         ntp_model=model_ntp,
         n_epochs=n_epochs,
@@ -274,3 +269,8 @@ def t5_main(exp_config: ExperimentConfig):
     trainer.train(train, val)
 
     return trainer.output_name
+
+
+if __name__ == "__main__":
+
+    t5_main(ExperimentConfig("t5", None, "prova"))
