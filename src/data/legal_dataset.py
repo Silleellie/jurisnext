@@ -290,22 +290,25 @@ def log_parameters(ds: LegalDataset, exp_name: str):
         "data/val_set_n_cases": ds.val_df.shape[0],
         "data/test_set_n_cases": ds.test_df_list[0].shape[0],
         "data/original_title_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                                          "data_plots",
                                                                           exp_name,
                                                                           "original_titles_counts.png"),
                                                              mode="RGB"),
         "data/train_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                                 "data_plots",
                                                                  exp_name,
                                                                  "train_titles_counts.png"),
                                                     mode="RGB"),
         "data/val_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                               "data_plots",
                                                                exp_name,
                                                                "val_titles_counts.png"),
                                                   mode="RGB"),
         "data/test_distribution_plot": [wandb.Image(os.path.join(REPORTS_DIR,
+                                                                 "data_plots",
                                                                  exp_name,
                                                                  "test_sets",
-                                                                 f"test_{test_split_idx}_"
-                                                                 f"titles_counts.png"),
+                                                                 f"test_{test_split_idx}_titles_counts.png"),
                                                     mode="RGB",
                                                     caption=f"Test idx: {test_split_idx}")
                                         for test_split_idx in range(len(ds.test_df_list))]
@@ -338,7 +341,8 @@ def data_main(exp_config: ExperimentConfig):
     labels_count = cleaned_df_to_plot["titles"].value_counts().reset_index()
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "original_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name,
+                                                      "data_plots", "original_titles_counts.png"))
 
     # check that all test sets have the same number of cases
     assert all(ds.test_df_list[0].shape[0] == test_set.shape[0] for test_set in ds.test_df_list)
@@ -348,7 +352,8 @@ def data_main(exp_config: ExperimentConfig):
     labels_count = train_df_to_plot["titles"].value_counts().reset_index()
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "train_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name,
+                                                      "data_plots", "train_titles_counts.png"))
 
     # PLOT VAL TITLES DISTRIBUTION
     val_df_to_plot = ds.val_df.explode("input_title_sequence")
@@ -357,7 +362,8 @@ def data_main(exp_config: ExperimentConfig):
     labels_count = labels_count.rename(columns={"index": "titles"})
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "val_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name,
+                                                      "data_plots", "val_titles_counts.png"))
 
     # PLOT TEST TITLES DISTRIBUTION
 
@@ -373,6 +379,7 @@ def data_main(exp_config: ExperimentConfig):
 
         plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR,
                                                           exp_config.exp_name,
+                                                          "data_plots",
                                                           "test_sets",
                                                           f"test_{i}_titles_counts.png"))
 
