@@ -198,7 +198,8 @@ class LegalDataset:
 
         # TO DO: consider starting always from the initial paragraph,
         # rather than varying the starting point of the seq
-        start_index = random.randint(0, len(batch["text_sequence"]) - sliding_size - 1)
+        # start_index = random.randint(0, len(batch["text_sequence"]) - sliding_size - 1)
+        start_index = 0
         end_index = start_index + sliding_size
 
         return {
