@@ -57,7 +57,8 @@ class SentenceTransformerEncoder(SentenceEncoder):
         self.model_name = model_name
 
     def encode_batch(self, batch_sentences: List[str]) -> torch.Tensor:
-        return self.model.encode(batch_sentences, batch_size=self.batch_size, convert_to_tensor=True)
+        return self.model.encode(batch_sentences,
+                                 batch_size=self.batch_size, convert_to_tensor=True, show_progress_bar=False)
 
     def get_parameters(self):
         return {
