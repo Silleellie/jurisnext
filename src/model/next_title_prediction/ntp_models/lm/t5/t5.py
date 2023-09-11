@@ -90,7 +90,7 @@ class NTPT5(NTPModelHF):
         # to avoid duplicate parameter error
         config_and_gen_kwargs.pop("return_unused_kwargs", None)
 
-        config_and_gen_kwargs["num_return_sequences"] = config_and_gen_kwargs.pop("num_return_sequences", 5)
+        config_and_gen_kwargs["num_return_sequences"] = config_and_gen_kwargs.pop("num_return_sequences", 10)
         config_and_gen_kwargs["max_new_tokens"] = config_and_gen_kwargs.pop("max_new_tokens", 50)
         config_and_gen_kwargs["num_beams"] = config_and_gen_kwargs.pop("num_beams", 30)
         config_and_gen_kwargs["no_repeat_ngram_size"] = config_and_gen_kwargs.pop("no_repeat_ngram_size", 0)
@@ -218,12 +218,10 @@ def t5_main(exp_config: ExperimentConfig):
 
     cluster_label = None
 
-    bool_task = BoolNTP(list(all_unique_labels))
-
     train_tasks = [
         DirectNTP(),
         DirectNTPSideInfo(),
-        bool_task
+        BoolNTP(list(all_unique_labels))
     ]
 
     sent_encoder = SentenceTransformerEncoder(
