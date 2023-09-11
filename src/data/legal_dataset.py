@@ -334,15 +334,15 @@ def data_main(exp_config: ExperimentConfig):
     ds = LegalDataset(n_test_set=exp_config.n_test_set, random_seed=exp_config.random_seed)
 
     # create directory where all the distributions will be saved
-    os.makedirs(os.path.join(REPORTS_DIR, exp_config.exp_name), exist_ok=True)
+    os.makedirs(os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name), exist_ok=True)
 
     # PLOT ORIGINAL DATASET TITLES DISTRIBUTION
     cleaned_df_to_plot = ngram_cut_df.rename(columns={"title": "titles"})
     labels_count = cleaned_df_to_plot["titles"].value_counts().reset_index()
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name,
-                                                      "data_plots", "original_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name,
+                                                      "original_titles_counts.png"))
 
     # check that all test sets have the same number of cases
     assert all(ds.test_df_list[0].shape[0] == test_set.shape[0] for test_set in ds.test_df_list)
@@ -352,8 +352,8 @@ def data_main(exp_config: ExperimentConfig):
     labels_count = train_df_to_plot["titles"].value_counts().reset_index()
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name,
-                                                      "data_plots", "train_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name,
+                                                      "train_titles_counts.png"))
 
     # PLOT VAL TITLES DISTRIBUTION
     val_df_to_plot = ds.val_df.explode("input_title_sequence")
@@ -362,13 +362,13 @@ def data_main(exp_config: ExperimentConfig):
     labels_count = labels_count.rename(columns={"index": "titles"})
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name,
-                                                      "data_plots", "val_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name,
+                                                      "val_titles_counts.png"))
 
     # PLOT TEST TITLES DISTRIBUTION
 
     # create directory where all the test sets distributions will be saved
-    os.makedirs(os.path.join(REPORTS_DIR, exp_config.exp_name, "test_sets"), exist_ok=True)
+    os.makedirs(os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name, "test_sets"), exist_ok=True)
 
     for i, test_df in enumerate(ds.test_df_list):
         test_df_to_plot = test_df.explode("input_title_sequence")
@@ -378,8 +378,8 @@ def data_main(exp_config: ExperimentConfig):
         labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
         plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR,
-                                                          exp_config.exp_name,
                                                           "data_plots",
+                                                          exp_config.exp_name,
                                                           "test_sets",
                                                           f"test_{i}_titles_counts.png"))
 
