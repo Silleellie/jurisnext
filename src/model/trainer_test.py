@@ -106,7 +106,9 @@ if __name__ == "__main__":
         per_device_train_batch_size=4,
         per_device_eval_batch_size=4,
         evaluation_strategy="epoch",
-        report_to="none"
+        logging_steps=0.01,
+        report_to="none",
+        save_strategy="no",
     )
 
     trainer = Trainer(
