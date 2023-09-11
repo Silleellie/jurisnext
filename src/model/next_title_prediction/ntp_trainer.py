@@ -26,7 +26,8 @@ class NTPTrainer:
                  device: str = 'cuda:0',
                  eval_batch_size: Optional[int] = None,
                  output_name: Optional[str] = None,
-                 log_wandb: bool = False):
+                 log_wandb: bool = False,
+                 random_seed: Optional[int] = None):
 
         self.ntp_model = ntp_model
         self.n_epochs = n_epochs
@@ -35,6 +36,7 @@ class NTPTrainer:
         self.eval_batch_size = eval_batch_size if eval_batch_size is not None else batch_size
         self.device = device
         self.log_wandb = log_wandb
+        self.random_seed = random_seed
 
         # output name
         if output_name is None:
@@ -89,10 +91,11 @@ class NTPTrainer:
                 break
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
-            sampled_train = train_dataset.map(LegalDataset.perform_sampling,
-                                              remove_columns=train_dataset.column_names,
-                                              load_from_cache_file=False,
-                                              keep_in_memory=True)
+            shuffled_train = train_dataset.shuffle(seed=self.random_seed)
+            sampled_train = shuffled_train.map(LegalDataset.perform_sampling,
+                                               remove_columns=train_dataset.column_names,
+                                               load_from_cache_file=False,
+                                               keep_in_memory=True)
             preprocessed_train = sampled_train.map(self.ntp_model.tokenize,
                                                    remove_columns=sampled_train.column_names,
                                                    load_from_cache_file=False,
@@ -123,8 +126,8 @@ class NTPTrainer:
                     if self.log_wandb:
 
                         to_log = {
-                             'train/loss': (train_loss / i),
-                             'train/step': train_step
+                            'train/loss': (train_loss / i),
+                            'train/step': train_step
                         }
 
                         if i == total_n_batch:
@@ -137,7 +140,8 @@ class NTPTrainer:
             pbar.close()
 
             if validation_dataset is not None:
-                val_loss, val_step = self.validation(preprocessed_validation=preprocessed_val, val_step=val_step, epoch=epoch)
+                val_loss, val_step = self.validation(preprocessed_validation=preprocessed_val, val_step=val_step,
+                                                     epoch=epoch)
 
                 # if there is a significant difference between the last minimum loss and the current one
                 # set it as the new min loss and save the model parameters
