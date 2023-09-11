@@ -216,61 +216,67 @@ class NTPMultimodalFusion(NTPModel):
         """
 
         input_dict = {}
-
-        # rows represent different sequences length (e.g. only first label or from first to fifth label)
-        # columns represent all available labels
-        # if a label appears in a sequence, the corresponding cell value is increased (+1)
-        image_repr = []
-        last_repr = np.full(len(self.config.label2id), 0)
         title_str = ", ".join(sample['input_title_sequence'])
 
-        for title in sample['input_title_sequence']:
-            title_idx = self.config.label2id[title]
-            last_repr[title_idx] += 1
-            image_repr.append(last_repr)
+        # if self.cluster_label_mapper is not None:
+        #     immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
+        #     title_str = title_str + f"\nNext title cluster: {immediate_next_cluster}"
+        #
+        #     # to add cluster label information, an additional row is added to the image
+        #     # this row will have all cells that represent labels that are part of the cluster with value 1 and
+        #     # all other cells with value 0
+        #     labels_for_cluster = self.cluster_label_mapper.get_labels_from_cluster(immediate_next_cluster)
+        #     cluster_repr_image_row = np.full(len(self.config.label2id), 0)
+        #
+        #     for label_in_cluster in labels_for_cluster:
+        #         cluster_repr_image_row[self.config.label2id[label_in_cluster]] = 1
+        #
+        #     # !!! The final number of rows in this case will be max_seq_len + 1 when using cluster labels !!!
+        #     image_repr.append(cluster_repr_image_row)
 
-        # if max length of the sequence which represents the image is different from the model max length
-        # add rows full of zeros until the max length is reached
-        if len(image_repr) != self.config.max_seq_len:
-            image_repr.extend(
-                [torch.from_numpy(np.full(len(self.config.label2id), 0)) for _ in
-                 range(self.config.max_seq_len - len(image_repr))])
-
-        if self.cluster_label_mapper is not None:
-            immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
-            title_str = title_str + f"\nNext title cluster: {immediate_next_cluster}"
-
-            # to add cluster label information, an additional row is added to the image
-            # this row will have all cells that represent labels that are part of the cluster with value 1 and
-            # all other cells with value 0
-            labels_for_cluster = self.cluster_label_mapper.get_labels_from_cluster(immediate_next_cluster)
-            cluster_repr_image_row = np.full(len(self.config.label2id), 0)
-
-            for label_in_cluster in labels_for_cluster:
-                cluster_repr_image_row[self.config.label2id[label_in_cluster]] = 1
-
-            # !!! The final number of rows in this case will be max_seq_len + 1 when using cluster labels !!!
-            image_repr.append(cluster_repr_image_row)
-
-        # unsqueeze to add channel and convert to [0, 1] range
-        image_repr = np.vstack(image_repr)
-        max_image_repr_value = np.max(image_repr)
-        image_repr = torch.from_numpy(image_repr).unsqueeze(0).float().div(max_image_repr_value)
         tokenizer_output = self.tokenizer(title_str, truncation=True)
 
         input_dict["input_ids"] = tokenizer_output["input_ids"]
         input_dict["token_type_ids"] = tokenizer_output["token_type_ids"]
         input_dict["attention_mask"] = tokenizer_output["attention_mask"]
 
-        input_dict['image'] = image_repr
         input_dict['labels'] = [self.config.label2id[sample['immediate_next_title']]]
+        input_dict['titles'] = sample['input_title_sequence']
 
         return input_dict
 
     def prepare_input(self, batch):
         input_dict = {}
 
-        input_dict["image"] = batch["image"].to(self.model.device).float()
+        image_reprs = []
+        for titles in batch['titles']:
+
+            # rows represent different sequences length (e.g. only first label or from first to fifth label)
+            # columns represent all available labels
+            # if a label appears in a sequence, the corresponding cell value is increased (+1)
+            image_repr = []
+            last_repr = np.full(len(self.config.label2id), 0)
+
+            for title in titles:
+                title_idx = self.config.label2id[title]
+                last_repr[title_idx] += 1
+                image_repr.append(last_repr.copy())
+
+            # if max length of the sequence which represents the image is different from the model max length
+            # add rows full of zeros until the max length is reached
+            if len(image_repr) != self.config.max_seq_len:
+                image_repr.extend(
+                    [torch.from_numpy(np.full(len(self.config.label2id), 0)) for _ in
+                     range(self.config.max_seq_len - len(image_repr))])
+
+            # unsqueeze to add channel and convert to [0, 1] range
+            image_repr = np.vstack(image_repr)
+            max_image_repr_value = np.max(image_repr)
+            image_repr = torch.from_numpy(image_repr).unsqueeze(0).float().div(max_image_repr_value)
+            image_reprs.append(image_repr)
+
+        input_dict['image'] = torch.stack(image_reprs).to(self.model.device).float()
+
         input_dict["text"] = {}
 
         input_dict["text"]["input_ids"] = pad_sequence(batch["input_ids"], batch_first=True,
@@ -347,7 +353,7 @@ def multimodal_main(exp_config: ExperimentConfig):
     train = dataset["train"]
     val = dataset["validation"]
 
-    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
+    all_train_labels_occurrences = [y for x in train for y in x['input_title_sequence']]
     # "smoothing" so that a weight can be calculated for labels which do not appear in the
     # train set
     all_train_labels_occurrences.extend(all_unique_labels)
