@@ -121,7 +121,7 @@ class LegalDataset:
     def all_ner_tokens(self) -> np.ndarray[str]:
 
         all_labels = pd.Series(self.all_unique_labels)
-        all_ner_tokens = np.unique(all_labels.str.extractall(r"(?P<ner_token><[^>]+>)"))
+        all_ner_tokens = np.unique(all_labels.str.extractall(r"(?P<ner_token>\[[^\]]+\])"))
 
         return np.unique(all_ner_tokens)
 
