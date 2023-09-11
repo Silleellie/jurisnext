@@ -161,16 +161,28 @@ class NTPT5(NTPModelHF):
 
             input_dict["labels"] = lm_labels.to(self.config.device)
 
-        if not self.training:
-            input_dict["immediate_next_title"] = batch["immediate_next_title"]
+        input_dict["immediate_next_title"] = batch["immediate_next_title"]
 
         return input_dict
 
     def train_step(self, batch):
 
+        target_text = batch.pop("immediate_next_title")
+
         output = self(**batch)
 
-        return output.loss
+        decoded_output = self.tokenizer.batch_decode(torch.argmax(output.logits, dim=2).tolist(),
+                                                     skip_special_tokens=True)
+
+        encoded_preds = self.sim_model(*decoded_output, as_tensor=True, show_progress=False)
+        encoded_truth = self.sim_model(*target_text, as_tensor=True, show_progress=False)
+
+        sim_vector = torch.clamp(util.pairwise_cos_sim(encoded_preds, encoded_truth), min=0, max=1)
+        ideal_vector = torch.full(sim_vector.shape, fill_value=1).to(self.config.device).float()
+
+        binary_loss = torch.nn.functional.binary_cross_entropy(sim_vector, ideal_vector)
+
+        return output.loss + binary_loss
 
     @torch.no_grad()
     def valid_step(self, batch):
