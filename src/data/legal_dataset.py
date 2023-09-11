@@ -75,14 +75,14 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
     return cleaned_dataset
 
 
-def grouping_labels(cleaned_dataset: pd.DataFrame, cutoff: int = None):
+def max_ngram_cut(cleaned_dataset: pd.DataFrame, cutoff_ngram: int = None):
     tokenizer_pattern = r"<[^>]+>|\S+"
 
-    grouped_df = cleaned_dataset.copy()
-    grouped_df["title"] = grouped_df["title"].apply(lambda x:
-                                                    ' '.join(re.findall(tokenizer_pattern, x)[:cutoff]))
+    ngram_cut_df = cleaned_dataset.copy()
+    ngram_cut_df["title"] = ngram_cut_df["title"].apply(lambda x:
+                                                        ' '.join(re.findall(tokenizer_pattern, x)[:cutoff_ngram]))
 
-    return grouped_df
+    return ngram_cut_df
 
 
 class LegalDataset:
@@ -316,8 +316,8 @@ def data_main(exp_config: ExperimentConfig):
     original_df: pd.DataFrame = pd.read_pickle(original_df_path)
     cleaned_df = clean_original_dataset(original_df)
 
-    grouped_df = grouping_labels(cleaned_df, exp_config.ngram_label)
-    grouped_df.to_pickle(cleaned_df_output_path)
+    ngram_cut_df = max_ngram_cut(cleaned_df, cutoff_ngram=exp_config.ngram_label)
+    ngram_cut_df.to_pickle(cleaned_df_output_path)
 
     # the constructor will create and dump the splits
     ds = LegalDataset(n_test_set=exp_config.n_test_set, random_seed=exp_config.random_seed)
@@ -326,7 +326,7 @@ def data_main(exp_config: ExperimentConfig):
     os.makedirs(os.path.join(REPORTS_DIR, exp_config.exp_name), exist_ok=True)
 
     # PLOT ORIGINAL DATASET TITLES DISTRIBUTION
-    cleaned_df_to_plot = grouped_df.rename(columns={"title": "titles"})
+    cleaned_df_to_plot = ngram_cut_df.rename(columns={"title": "titles"})
     labels_count = cleaned_df_to_plot["titles"].value_counts().reset_index()
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
