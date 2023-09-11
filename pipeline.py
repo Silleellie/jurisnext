@@ -60,6 +60,9 @@ if __name__ == '__main__':
     parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
                         help='Specify the number of test set to sample for evaluating the model trained',
                         metavar='10')
+    parser.add_argument('-ngram', '--ngram_label', type=int, default=None,
+                        help='Specify the max number of ngram that a label can have. If None, all ngrams are used',
+                        metavar='None')
     parser.add_argument('-d', '--device', type=str, default="cuda:0",
                         help='Specify the device which should be used during the experiment',
                         metavar='cuda:0')
@@ -98,6 +101,7 @@ if __name__ == '__main__':
             wandb.config.update({
                 "n_test_set": exp_config.n_test_set,
                 "random_seed": exp_config.random_seed,
+                "ngram_label": exp_config.ngram_label,
 
                 # these are hardcoded
                 "shuffle": True,
@@ -144,6 +148,7 @@ if __name__ == '__main__':
         if exp_config.log_wandb:
             wandb.config.update({
                 "n_test_set": exp_config.n_test_set,
+                "ngram_label": exp_config.ngram_label,
                 "eval_batch_size": exp_config.eval_batch_size,
                 "random_seed": exp_config.random_seed,
             })
