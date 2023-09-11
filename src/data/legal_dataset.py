@@ -72,6 +72,9 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
     # numbers
     cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'(?<=\s)[ct]?\d+', '<number>', x))
 
+    # substitute <TOKEN> with [TOKEN] to avoid adding tokens to t5
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'<([^>]+)>', r'[\g<1>]', x))
+
     return cleaned_dataset
 
 
@@ -393,4 +396,4 @@ def data_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    data_main(ExperimentConfig("we", "we", "we", ngram_label=2))
+    data_main(ExperimentConfig("we", "we", "we"))
