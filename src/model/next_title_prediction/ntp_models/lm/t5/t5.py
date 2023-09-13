@@ -253,6 +253,11 @@ def t5_main(exp_config: ExperimentConfig):
         device=device
     )
 
+    new_words = ['<']
+
+    model_ntp.tokenizer.add_tokens(new_words)
+    model_ntp.model.resize_token_embeddings(len(model_ntp.tokenizer), pad_to_multiple_of=8)
+
     trainer = NTPTrainer(
         ntp_model=model_ntp,
         n_epochs=n_epochs,
