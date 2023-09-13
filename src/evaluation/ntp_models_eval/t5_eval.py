@@ -11,6 +11,7 @@ from src.evaluation.metrics import MAP, MRR, Hit, Accuracy, Precision, Recall, F
 from src.evaluation.ntp_evaluator import NTPEvaluator
 from src.model.next_title_prediction.ntp_models import NTPT5, DirectNTP, DirectNTPSideInfo, ClusteredNTP, \
     ClusteredNTPSideInfo
+from src.model.sentence_encoders import SentenceTransformerEncoder
 
 
 def merge_results(results_list, metric_list, task, prefix_all_metrics, prefix_avg_metrics, log_wandb):
@@ -101,10 +102,33 @@ def eval_t5(exp_config, evaluator, test_set, metric_list, prefix):
 def t5_eval_main(exp_config: ExperimentConfig):
     eval_batch_size = exp_config.eval_batch_size
     model_pth = os.path.join(MODELS_DIR, exp_config.exp_name)
+    device = exp_config.device
 
-    ntp_model = NTPT5.load(model_pth)
-    ds = LegalDataset.load_dataset()
+    ds = LegalDataset.load_dataset(exp_config)
     test_set = ds.get_hf_datasets()["test"]
+    all_unique_labels = ds.all_unique_labels
+
+    if os.path.isdir(model_pth):
+        ntp_model = NTPT5.load(model_pth)
+    else:
+
+        sent_encoder = SentenceTransformerEncoder(
+            device=device,
+        )
+
+        ntp_model = NTPT5(
+            exp_config.checkpoint,
+            sentence_encoder=sent_encoder,
+            training_tasks=None,
+            test_task=None,
+            all_unique_labels=list(all_unique_labels),
+            device=device
+        )
+
+        new_words = ['<']
+
+        ntp_model.tokenizer.add_tokens(new_words)
+        ntp_model.model.resize_token_embeddings(len(ntp_model.tokenizer))
 
     evaluator = NTPEvaluator(ntp_model, eval_batch_size=eval_batch_size)
 
