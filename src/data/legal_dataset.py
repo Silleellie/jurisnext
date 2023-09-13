@@ -13,6 +13,8 @@ import wandb
 from datasets import Dataset, NamedSplit
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
+import nltk
+from nltk.corpus import stopwords
 
 from src import RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, ExperimentConfig, REPORTS_DIR
 
@@ -77,6 +79,25 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
     cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'<([^>]+)>', r'[\g<1>]', x))
 
     return cleaned_dataset
+
+
+def clean_keywords(original_dataset: pd.DataFrame):
+    nltk.download('stopwords')
+    stops = pd.Series(stopwords.words('english'))
+
+    cleaned_keywords_col = original_dataset["rel_keywords"].str.split(", ")
+
+    # remove stopwords
+    cleaned_keywords_col = cleaned_keywords_col.explode()
+    only_stopwords_index = cleaned_keywords_col.isin(stops)
+    cleaned_keywords_col = cleaned_keywords_col[~only_stopwords_index]
+    cleaned_keywords_col = cleaned_keywords_col.groupby(level=0).agg(list)
+
+    # in case all keywords had stopwords, we have removed them all, so we need to add a placeholder text
+    cleaned_keywords_col[cleaned_keywords_col.str.len() == 0] = ["!!No paragraph content!!"]
+    original_dataset["rel_keywords"] = cleaned_keywords_col.str.join(", ")
+
+    return original_dataset
 
 
 def max_ngram_cut(cleaned_dataset: pd.DataFrame, cutoff_ngram: int = None):
@@ -331,6 +352,7 @@ def data_main(exp_config: ExperimentConfig):
 
     original_df: pd.DataFrame = pd.read_pickle(original_df_path)
     cleaned_df = clean_original_dataset(original_df)
+    cleaned_df = clean_keywords(cleaned_df)
 
     ngram_cut_df = max_ngram_cut(cleaned_df, cutoff_ngram=exp_config.ngram_label)
     ngram_cut_df.to_pickle(cleaned_df_output_path)
@@ -397,4 +419,4 @@ def data_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    data_main(ExperimentConfig("we", "we", "we"))
+    data_main(ExperimentConfig("we", "we", "we", pipeline_phases=["data"], t5_tasks=[], n_test_set=2))
