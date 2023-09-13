@@ -314,7 +314,7 @@ class LegalDataset:
         return dataset_dict
 
     @classmethod
-    def load_dataset(cls):
+    def load_dataset(cls, exp_config: ExperimentConfig):
         obj = cls.__new__(cls)  # Does not call __init__
         super(LegalDataset, obj).__init__()  # Don't forget to call any polymorphic base class initializers
 
@@ -333,6 +333,9 @@ class LegalDataset:
 
         with open(cls.test_list_path, "rb") as f:
             obj.test_df_list = pickle.load(f)
+
+        obj.random_seed = exp_config.random_seed
+        obj.sampling_strategy = exp_config.seq_sampling_strategy
 
         return obj
 

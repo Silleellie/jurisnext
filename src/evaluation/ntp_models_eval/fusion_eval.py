@@ -14,7 +14,7 @@ def multimodal_eval_main(exp_config: ExperimentConfig):
     model_pth = os.path.join(MODELS_DIR, exp_config.exp_name)
 
     ntp_model = NTPMultimodalFusion.load(model_pth)
-    ds = LegalDataset.load_dataset()
+    ds = LegalDataset.load_dataset(exp_config)
     test_set = ds.get_hf_datasets()["test"]
 
     evaluator = NTPEvaluator(ntp_model, eval_batch_size=eval_batch_size)
