@@ -2,9 +2,10 @@ import re
 import os
 import pickle
 import random
+from collections import namedtuple
 from functools import cached_property
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Literal
 
 import datasets
 import numpy as np
@@ -107,6 +108,10 @@ def max_ngram_cut(cleaned_dataset: pd.DataFrame, cutoff_ngram: int = None):
     return ngram_cut_df
 
 
+SeqTargetTuple = namedtuple("SeqTargetTuple", ["seq_title", "target_title",
+                                               "seq_text", "target_text",
+                                               "seq_keywords", "target_keywords"])
+
 class LegalDataset:
     cleaned_dataset_path: str = os.path.join(INTERIM_DATA_DIR, "cleaned_dataframe.pkl")
     train_path: str = os.path.join(PROCESSED_DATA_DIR, "train.pkl")
@@ -115,9 +120,11 @@ class LegalDataset:
 
     def __init__(self,
                  n_test_set: int,
-                 random_seed: int):
+                 random_seed: int,
+                 sampling_strategy: Literal['random', 'augment'] = "random"):
 
         self.random_seed = random_seed
+        self.sampling_strategy = sampling_strategy
         self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_set)
 
     @cached_property
@@ -207,11 +214,19 @@ class LegalDataset:
         if to_sample:
             sampled_split = grouped_split.apply(self.perform_sampling, axis=1)
             grouped_split = pd.DataFrame.from_records(sampled_split)
+            if self.sampling_strategy == "augment":
+                grouped_split = grouped_split.explode(column=grouped_split.columns.tolist())
 
         return grouped_split
 
+    def perform_sampling(self, batch):
+        if self.sampling_strategy == "random":
+            return self._sample_sequences(batch)
+        else:
+            return self._augment_sequences(batch)
+
     @staticmethod
-    def perform_sampling(batch):
+    def _sample_sequences(batch):
 
         # a sequence has at least 1 data point, but it can have more depending on the length of the sequence
         # We must ensure that at least an element can be used as test set
@@ -226,12 +241,47 @@ class LegalDataset:
 
         return {
             "case_id": batch["case_id"],
-            "input_text_sequence": batch["text_sequence"][start_index:end_index],
             "input_title_sequence": batch["title_sequence"][start_index:end_index],
+            "input_text_sequence": batch["text_sequence"][start_index:end_index],
             "input_keywords_sequence": batch["rel_keywords_sequence"][start_index:end_index],
-            "immediate_next_text": batch["text_sequence"][end_index],
             "immediate_next_title": batch["title_sequence"][end_index],
+            "immediate_next_text": batch["text_sequence"][end_index],
             "immediate_next_rel_keywords": batch["rel_keywords_sequence"][end_index]
+        }
+
+    @staticmethod
+    def _augment_sequences(sample):
+
+        all_title_sequence = sample["title_sequence"]
+        all_text_sequence = sample["text_sequence"]
+        all_keywords_sequence = sample["rel_keywords_sequence"]
+
+        assert len(all_title_sequence) >= 2, "All sequences must have at least 2 data points"
+
+        n_sequences = len(all_title_sequence)
+
+        all_seq = []
+        for i in range(1, n_sequences):
+            seq_title = all_title_sequence[0:i]
+            seq_text = all_text_sequence[0:i]
+            seq_keywords = all_keywords_sequence[0:i]
+
+            target_title = all_title_sequence[i]
+            target_text = all_text_sequence[i]
+            target_keywords = all_keywords_sequence[i]
+
+            all_seq.append(SeqTargetTuple(seq_title, target_title,
+                                          seq_text, target_text,
+                                          seq_keywords, target_keywords))
+
+        return {
+            "case_id": [sample["case_id"] for _ in range(1, n_sequences)],
+            "input_title_sequence": [el.seq_title for el in all_seq],
+            "input_text_sequence": [el.seq_text for el in all_seq],
+            "input_keywords_sequence": [el.seq_keywords for el in all_seq],
+            "immediate_next_title": [el.target_title for el in all_seq],
+            "immediate_next_text": [el.target_text for el in all_seq],
+            "immediate_next_rel_keywords": [el.target_keywords for el in all_seq]
         }
 
     def get_hf_datasets(self, merge_train_val: bool = False) -> Dict[str, datasets.Dataset]:
@@ -355,7 +405,9 @@ def data_main(exp_config: ExperimentConfig):
     ngram_cut_df.to_pickle(cleaned_df_output_path)
 
     # the constructor will create and dump the splits
-    ds = LegalDataset(n_test_set=exp_config.n_test_set, random_seed=exp_config.random_seed)
+    ds = LegalDataset(n_test_set=exp_config.n_test_set,
+                      random_seed=exp_config.random_seed,
+                      sampling_strategy=exp_config.seq_sampling_strategy)
 
     # create directory where all the distributions will be saved
     os.makedirs(os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name), exist_ok=True)
@@ -416,4 +468,4 @@ def data_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    data_main(ExperimentConfig("we", "we", "we", pipeline_phases=["data"], t5_tasks=[], n_test_set=2))
+    data_main(ExperimentConfig("we", "we", "we", seq_sampling_strategy="random"))

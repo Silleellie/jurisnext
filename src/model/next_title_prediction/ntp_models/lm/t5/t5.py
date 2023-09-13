@@ -216,6 +216,7 @@ def t5_main(exp_config: ExperimentConfig):
 
     train = dataset["train"]
     val = dataset["validation"]
+    sampling_fn = ds.perform_sampling
 
     cluster_label = None
 
@@ -272,7 +273,8 @@ def t5_main(exp_config: ExperimentConfig):
         eval_batch_size=eval_batch_size,
         output_name=exp_config.exp_name,
         log_wandb=exp_config.log_wandb,
-        random_seed=exp_config.random_seed
+        random_seed=exp_config.random_seed,
+        train_sampling_fn=sampling_fn,
     )
 
     trainer.train(train, val)

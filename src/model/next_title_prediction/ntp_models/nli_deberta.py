@@ -224,6 +224,7 @@ def nli_deberta_main(exp_config: ExperimentConfig):
     ds = LegalDataset.load_dataset()
     dataset = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
+    sampling_fn = ds.perform_sampling
 
     cluster_label = None
 
@@ -258,7 +259,8 @@ def nli_deberta_main(exp_config: ExperimentConfig):
         all_labels=all_unique_labels,
         eval_batch_size=eval_batch_size,
         output_name=exp_config.exp_name,
-        log_wandb=exp_config.log_wandb
+        log_wandb=exp_config.log_wandb,
+        train_sampling_fn=sampling_fn
     )
 
     trainer.train(train, val)

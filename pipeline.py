@@ -73,6 +73,12 @@ if __name__ == '__main__':
     parser.add_argument('-ngram', '--ngram_label', type=int, default=None,
                         help='Specify the max number of ngram that a label can have. If None, all ngrams are used',
                         metavar='None')
+    parser.add_argument('-seq_sampling', '--seq_sampling_strategy', type=str, default="random",
+                        choices=['random', 'augment'],
+                        help='Specify how sampling is performed on the dataset. "random" will consider randomly '
+                             'picked sequences (starting always from the first element), "augment" will consider all '
+                             'possible incremental sequences',
+                        metavar='random')
     parser.add_argument('-d', '--device', type=str, default="cuda:0",
                         help='Specify the device which should be used during the experiment',
                         metavar='cuda:0')

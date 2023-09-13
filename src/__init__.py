@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, List, ClassVar
+from typing import Optional, List, ClassVar, Literal
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_PATH = str(Path(os.path.join(_THIS_DIR, "..")).resolve())
@@ -19,12 +19,10 @@ METRICS_DIR = os.path.join(REPORTS_DIR, "metrics")
 class ExperimentConfig:
 
     # these 5 are set in pipeline.py depending on cmd parameters passed
-    model: Optional[str]
-    checkpoint: Optional[str]
-    exp_name: Optional[str]
-    t5_tasks: List[str]
-    pipeline_phases: List[str]
-
+    model: Optional[str] = None
+    checkpoint: Optional[str] = None
+    exp_name: Optional[str] = None
+    pipeline_phases: List[str] = None
     epochs: int = 100
     train_batch_size: int = 2
     eval_batch_size: int = 2
@@ -33,5 +31,7 @@ class ExperimentConfig:
     log_wandb: bool = False
     n_test_set: int = 10
     ngram_label: Optional[int] = None
+    seq_sampling_strategy: Literal['random', 'augment'] = "random"
     t5_keyword_min_occ: Optional[int] = None
+    t5_tasks: List[str] = None
     device: str = "cuda:0"

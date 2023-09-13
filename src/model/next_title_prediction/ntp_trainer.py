@@ -2,7 +2,7 @@ import os
 from math import ceil
 import itertools
 
-from typing import Optional
+from typing import Optional, Callable
 
 import datasets
 import numpy as np
@@ -11,7 +11,6 @@ import wandb
 from tqdm import tqdm
 
 from src import MODELS_DIR
-from src.data.legal_dataset import LegalDataset
 from src.evaluation.metrics import Hit, Accuracy
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel
 
@@ -23,6 +22,7 @@ class NTPTrainer:
                  batch_size: int,
                  ntp_model: NTPModel,
                  all_labels: np.ndarray,
+                 train_sampling_fn: Callable,
                  device: str = 'cuda:0',
                  eval_batch_size: Optional[int] = None,
                  output_name: Optional[str] = None,
@@ -33,6 +33,7 @@ class NTPTrainer:
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.all_labels = all_labels
+        self.train_sampling_fn = train_sampling_fn
         self.eval_batch_size = eval_batch_size if eval_batch_size is not None else batch_size
         self.device = device
         self.log_wandb = log_wandb
@@ -92,7 +93,7 @@ class NTPTrainer:
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
             shuffled_train = train_dataset.shuffle(seed=self.random_seed)
-            sampled_train = shuffled_train.map(LegalDataset.perform_sampling,
+            sampled_train = shuffled_train.map(self.train_sampling_fn,
                                                remove_columns=train_dataset.column_names,
                                                load_from_cache_file=False,
                                                keep_in_memory=True)
