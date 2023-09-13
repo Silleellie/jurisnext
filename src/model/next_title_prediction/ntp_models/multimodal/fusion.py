@@ -1,5 +1,4 @@
 import os
-import pickle
 from typing import Dict, Union, List, Any, Optional
 
 import numpy as np
@@ -10,11 +9,9 @@ from transformers import AutoTokenizer, PreTrainedModel, PretrainedConfig
 
 from src import ExperimentConfig
 from src.data.legal_dataset import LegalDataset
-from src.model.clustering import KMeansAlg, ClusterLabelMapper
 from src.model.next_title_prediction.ntp_models.multimodal.encoders import CNNEncoder, LSTMEncoder
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel, NTPConfig
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
-from src.model.sentence_encoders import SentenceTransformerEncoder
 
 
 class MultimodalFusionConfig(PretrainedConfig, NTPConfig):
@@ -170,23 +167,17 @@ class NTPMultimodalFusion(NTPModel):
 
     model_class = MultimodalFusionForSequenceClassification
 
-    def __init__(self, model: MultimodalFusionForSequenceClassification, cluster_label_mapper=None):
+    def __init__(self, model: MultimodalFusionForSequenceClassification):
 
         super().__init__(
             model=model,
-            tokenizer=AutoTokenizer.from_pretrained(model.config.text_encoder_params["model_name"]),
-            cluster_label_mapper=cluster_label_mapper),
+            tokenizer=AutoTokenizer.from_pretrained(model.config.text_encoder_params["model_name"])),
 
     def get_suggested_optimizer(self):
         return torch.optim.AdamW(self.model.parameters_to_update, lr=2e-5)
 
     def save(self, save_path):
-
         self.model.save_pretrained(save_path)
-
-        if self.cluster_label_mapper is not None:
-            with open(os.path.join(save_path, 'cluster_label_mapper.pkl'), "wb") as f:
-                pickle.dump(self.cluster_label_mapper, f)
 
     @classmethod
     def load(cls, save_path):
@@ -195,16 +186,8 @@ class NTPMultimodalFusion(NTPModel):
             pretrained_model_name_or_path=save_path
         )
 
-        cluster_label_mapper_path = os.path.join(save_path, 'cluster_label_mapper.pkl')
-
-        cluster_label_mapper = None
-        if os.path.isfile(cluster_label_mapper_path):
-            with open(cluster_label_mapper_path, "rb") as f:
-                cluster_label_mapper = pickle.load(f)
-
         new_inst = cls(
             model=model,
-            cluster_label_mapper=cluster_label_mapper
         )
 
         return new_inst
@@ -217,22 +200,6 @@ class NTPMultimodalFusion(NTPModel):
 
         input_dict = {}
         title_str = ", ".join(sample['input_title_sequence'])
-
-        # if self.cluster_label_mapper is not None:
-        #     immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
-        #     title_str = title_str + f"\nNext title cluster: {immediate_next_cluster}"
-        #
-        #     # to add cluster label information, an additional row is added to the image
-        #     # this row will have all cells that represent labels that are part of the cluster with value 1 and
-        #     # all other cells with value 0
-        #     labels_for_cluster = self.cluster_label_mapper.get_labels_from_cluster(immediate_next_cluster)
-        #     cluster_repr_image_row = np.full(len(self.config.label2id), 0)
-        #
-        #     for label_in_cluster in labels_for_cluster:
-        #         cluster_repr_image_row[self.config.label2id[label_in_cluster]] = 1
-        #
-        #     # !!! The final number of rows in this case will be max_seq_len + 1 when using cluster labels !!!
-        #     image_repr.append(cluster_repr_image_row)
 
         tokenizer_output = self.tokenizer(title_str, truncation=True)
 
@@ -328,28 +295,11 @@ def multimodal_main(exp_config: ExperimentConfig):
     batch_size = exp_config.train_batch_size
     eval_batch_size = exp_config.eval_batch_size
     device = exp_config.device
-    use_cluster_alg = exp_config.use_clusters
-    random_state = exp_config.random_seed
 
-    ds = LegalDataset.load_dataset()
+    ds = LegalDataset.load_dataset(exp_config)
     dataset = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
     sampling_fn = ds.perform_sampling
-
-    cluster_label = None
-    if use_cluster_alg:
-        clus_alg = KMeansAlg(
-            n_clusters=50,
-            random_state=random_state,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        sent_encoder = SentenceTransformerEncoder(
-            device=device,
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
 
     train = dataset["train"]
     val = dataset["validation"]
@@ -386,7 +336,6 @@ def multimodal_main(exp_config: ExperimentConfig):
 
     model_ntp = NTPMultimodalFusion(
         model=model,
-        cluster_label_mapper=cluster_label,
     )
 
     output_name = f"MultimodalFusion_{n_epochs}"

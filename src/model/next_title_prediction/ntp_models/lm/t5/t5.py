@@ -9,9 +9,7 @@ from transformers import T5ForConditionalGeneration, Adafactor, T5Config, Genera
 
 from src import ExperimentConfig
 from src.data.legal_dataset import LegalDataset
-from src.model.clustering import ClusterLabelMapper, KMeansAlg
-from src.model.next_title_prediction.ntp_models.lm.t5.templates import DirectNTP, BoolNTP, Task, DirectNTPSideInfo, \
-    ClusteredNTPSideInfo, ClusteredNTP
+from src.model.next_title_prediction.ntp_models.lm.t5.templates import DirectNTP, BoolNTP, Task, DirectNTPSideInfo
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 from src.model.sentence_encoders import SentenceEncoder, SentenceTransformerEncoder
 from src.model.next_title_prediction.ntp_models_abtract import NTPConfig, NTPModelHF
@@ -83,7 +81,6 @@ class NTPT5(NTPModelHF):
     def __init__(self,
                  pretrained_model_or_pth: str = default_checkpoint,
                  sentence_encoder: SentenceEncoder = SentenceTransformerEncoder(),
-                 cluster_label_mapper: ClusterLabelMapper = None,
                  **config_and_gen_kwargs):
 
         # to avoid duplicate parameter error
@@ -101,7 +98,6 @@ class NTPT5(NTPModelHF):
 
         super().__init__(
             pretrained_model_or_pth=pretrained_model_or_pth,
-            cluster_label_mapper=cluster_label_mapper,
             **config_kwargs
         )
 
@@ -136,7 +132,6 @@ class NTPT5(NTPModelHF):
         task = random.choice(self.config.training_tasks) if self.training else self.config.test_task
 
         input_text, target_text = task(title_sequence, next_title,
-                                       cluster_mapper=self.cluster_label_mapper,
                                        rel_keywords_seq=rel_keywords_sequence)
 
         encoded_sequence = self.tokenizer(text=input_text, text_target=target_text, truncation=True)
@@ -202,23 +197,18 @@ def t5_main(exp_config: ExperimentConfig):
     batch_size = exp_config.train_batch_size
     eval_batch_size = exp_config.eval_batch_size
     device = exp_config.device
-    use_cluster_alg = exp_config.use_clusters
 
     checkpoint = "google/flan-t5-small"
     if exp_config.checkpoint is not None:
         checkpoint = exp_config.checkpoint
 
-    random_state = exp_config.random_seed
-
-    ds = LegalDataset.load_dataset()
+    ds = LegalDataset.load_dataset(exp_config)
     dataset = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
 
     train = dataset["train"]
     val = dataset["validation"]
     sampling_fn = ds.perform_sampling
-
-    cluster_label = None
 
     all_rel_keywords = train["rel_keywords_sequence"] + val["input_keywords_sequence"]
 
@@ -237,22 +227,9 @@ def t5_main(exp_config: ExperimentConfig):
         device=device,
     )
 
-    if use_cluster_alg:
-        clus_alg = KMeansAlg(
-            n_clusters=200,
-            random_state=random_state,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
-        test_task = ClusteredNTPSideInfo()
-        train_task_list.extend([ClusteredNTP(), ClusteredNTPSideInfo()])
-
     model_ntp = NTPT5(
         checkpoint,
         sentence_encoder=sent_encoder,
-        cluster_label_mapper=cluster_label,
 
         training_tasks=train_task_list,
         test_task=test_task,

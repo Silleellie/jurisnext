@@ -10,10 +10,8 @@ from transformers import BertForSequenceClassification, BertConfig
 
 from src import ExperimentConfig
 from src.data.legal_dataset import LegalDataset
-from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
-from src.model.sentence_encoders import SentenceTransformerEncoder
 
 
 class NTPBertConfig(BertConfig, NTPConfig):
@@ -61,12 +59,10 @@ class NTPBert(NTPModelHF):
 
     def __init__(self,
                  pretrained_model_or_pth: str = default_checkpoint,
-                 cluster_label_mapper: ClusterLabelMapper = None,
                  **config_kwargs):
 
         super().__init__(
             pretrained_model_or_pth=pretrained_model_or_pth,
-            cluster_label_mapper=cluster_label_mapper,
             **config_kwargs
         )
 
@@ -75,18 +71,7 @@ class NTPBert(NTPModelHF):
 
     def tokenize(self, sample):
 
-        if self.cluster_label_mapper is not None:
-
-            immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
-            text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
-
-            output = self.tokenizer(text,
-                                    truncation=True)
-
-        else:
-            output = self.tokenizer(', '.join(sample["input_title_sequence"]),
-                                    truncation=True)
-
+        output = self.tokenizer(', '.join(sample["input_title_sequence"]), truncation=True)
         labels = [self.config.label2id[sample["immediate_next_title"]]]
 
         return {'input_ids': output['input_ids'],
@@ -151,34 +136,15 @@ def bert_main(exp_config: ExperimentConfig):
     batch_size = exp_config.train_batch_size
     eval_batch_size = exp_config.eval_batch_size
     device = exp_config.device
-    use_cluster_alg = exp_config.use_clusters
 
     checkpoint = "bert-base-uncased"
     if exp_config.checkpoint is not None:
         checkpoint = exp_config.checkpoint
 
-    random_state = exp_config.random_seed
-
-    ds = LegalDataset.load_dataset()
+    ds = LegalDataset.load_dataset(exp_config)
     dataset = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
     sampling_fn = ds.perform_sampling
-
-    cluster_label = None
-
-    if use_cluster_alg:
-        clus_alg = KMeansAlg(
-            n_clusters=50,
-            random_state=random_state,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        sent_encoder = SentenceTransformerEncoder(
-            device=device,
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
 
     train = dataset["train"]
     val = dataset["validation"]
@@ -194,7 +160,6 @@ def bert_main(exp_config: ExperimentConfig):
 
     ntp_model = NTPBert(
         checkpoint,
-        cluster_label_mapper=cluster_label,
 
         problem_type="single_label_classification",
         num_labels=len(all_unique_labels),
