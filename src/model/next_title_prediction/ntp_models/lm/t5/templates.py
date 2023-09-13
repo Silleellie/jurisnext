@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import itertools
 import random
 from abc import ABC, abstractmethod
 from collections import namedtuple
@@ -30,7 +32,6 @@ class Task(ABC):
 
 
 class DirectNTP(Task):
-
     templates = {
         0: PromptTarget(
             input_prompt="DirectNTP:\n\n"
@@ -48,7 +49,6 @@ class DirectNTP(Task):
     }
 
     def __call__(self, title_sequence, target_title, **kwargs):
-
         # random select of string separator for titles sequence and the prompt to use
         separator = " , " if random.getrandbits(1) else " ; "
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
@@ -81,14 +81,62 @@ class DirectNTPSideInfo(Task):
         )
     }
 
-    def __call__(self, title_sequence, target_title, **kwargs):
+    def __init__(self, relevant_keywords_col: List[List[str]] = None, minimum_occ_number: int = None):
 
+        self.unique_relevant_keywords = None
+        self.minimum_occ_number = minimum_occ_number
+        self.relevant_keywords_col = relevant_keywords_col
+
+        if self.minimum_occ_number is not None and self.relevant_keywords_col is not None:
+
+            # iterate over all words in the "rel_keywords" column
+            iter_rel = lambda: (relevant_keywords.split(', ')
+                                for relevant_keywords_seq in relevant_keywords_col
+                                for relevant_keywords in relevant_keywords_seq)
+
+            # need maximum len for dynamic collection of elements
+            keywords_len = max(len(keyword) for keywords in iter_rel() for keyword in keywords)
+            keywords = np.fromiter(itertools.chain.from_iterable(iter_rel()), dtype=f"U{keywords_len}")
+
+            # find keywords which appear less than "minimum_occ_number" times and remove them
+            unique_relevant_keywords, count_unique_relevant_keywords = np.unique(keywords, return_counts=True)
+            mask_keywords_to_remove = count_unique_relevant_keywords >= minimum_occ_number
+            self.unique_relevant_keywords = set(unique_relevant_keywords[mask_keywords_to_remove])
+
+    def to_json(self):
+        return repr(self), {"relevant_keywords_col": self.relevant_keywords_col,
+                            "minimum_occ_number": self.minimum_occ_number}
+
+    def __call__(self, title_sequence, target_title, **kwargs):
         assert "rel_keywords_seq" in kwargs, "rel_keywords should be set to use this template!"
         rel_keywords_seq = kwargs.pop("rel_keywords_seq")
 
         # since using all keywords of all elements of the sequence is too much,
         # we choose at random one for each element of the sequence
-        reduced_rel_keywords = [random.choice(rel_keywords.split(", ")) for rel_keywords in rel_keywords_seq]
+
+        reduced_rel_keywords = []
+
+        if self.minimum_occ_number is not None and self.relevant_keywords_col is not None:
+
+            for rel_keywords in rel_keywords_seq:
+
+                keywords_seq = set(rel_keywords.split(", "))
+                relevant_keywords_seq = keywords_seq.intersection(self.unique_relevant_keywords)
+
+                # if there are no relevant keywords after removing the less occurring ones, choose one at random
+                # among the less occurring ones. Otherwise, select one out of the most occurring ones
+                if len(relevant_keywords_seq) == 0:
+                    reduced_rel_keywords.append(random.sample(keywords_seq, 1)[0])
+                else:
+                    reduced_rel_keywords.append(random.sample(relevant_keywords_seq, 1)[0])
+
+        else:
+
+            # if no minimum_occ_number of relevant_keywords_col has been set, then select a random keyword from
+            # all the ones associated with the title
+            for rel_keywords in rel_keywords_seq:
+                keywords_seq = set(rel_keywords.split(", "))
+                reduced_rel_keywords.append(random.sample(keywords_seq, 1)[0])
 
         # random select of string separator for titles sequence and the prompt to use
         separator = " , " if random.getrandbits(1) else " ; "
@@ -104,7 +152,6 @@ class DirectNTPSideInfo(Task):
 
 
 class BoolNTP(Task):
-
     templates = {
         0: PromptTarget(
             input_prompt="BoolNTP:\n\n"
@@ -149,7 +196,6 @@ class BoolNTP(Task):
 
 
 class ClusteredNTP(Task):
-
     templates = {
         0: PromptTarget(
             input_prompt="ClusteredNTP:\n\n"
@@ -173,7 +219,6 @@ class ClusteredNTP(Task):
     }
 
     def __call__(self, title_sequence, target_title, **kwargs):
-
         assert "cluster_mapper" in kwargs, "cluster_mapper should be set to use this template!"
         cluster_mapper = kwargs.pop("cluster_mapper")
 
@@ -186,7 +231,8 @@ class ClusteredNTP(Task):
         input_prompt, target_text = random.choice(self.templates)  # random.choice applied to dict return a value
 
         list_to_text = separator.join(title_sequence)
-        possible_titles_to_bullet_list = (f"{bullet_notation} {{}}\n" * len(next_possible_titles)).format(*next_possible_titles)
+        possible_titles_to_bullet_list = (f"{bullet_notation} {{}}\n" * len(next_possible_titles)).format(
+            *next_possible_titles)
 
         text = input_prompt.format(list_to_text, next_cluster, possible_titles_to_bullet_list)
         target = target_text.format(target_title)
@@ -195,7 +241,6 @@ class ClusteredNTP(Task):
 
 
 class ClusteredNTPSideInfo(Task):
-
     templates = {
         0: PromptTarget(
             input_prompt="ClusteredNTPSideInfo:\n\n"
@@ -223,7 +268,6 @@ class ClusteredNTPSideInfo(Task):
     }
 
     def __call__(self, title_sequence, target_title, **kwargs):
-
         assert "cluster_mapper" in kwargs, "cluster_mapper should be set to use this template!"
         assert "rel_keywords_seq" in kwargs, "rel_keywords should be set to use this template!"
         cluster_mapper = kwargs.pop("cluster_mapper")
@@ -243,7 +287,8 @@ class ClusteredNTPSideInfo(Task):
 
         list_to_text = separator.join(title_sequence)
         list_to_rel_keywords = separator.join(reduced_rel_keywords)
-        possible_titles_to_bullet_list = (f"{bullet_notation} {{}}\n" * len(next_possible_titles)).format(*next_possible_titles)
+        possible_titles_to_bullet_list = (f"{bullet_notation} {{}}\n" * len(next_possible_titles)).format(
+            *next_possible_titles)
 
         text = input_prompt.format(list_to_text, list_to_rel_keywords, next_cluster, possible_titles_to_bullet_list)
         target = target_text.format(target_title)
