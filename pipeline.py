@@ -85,7 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--exp_name', type=str, default=None,
                         help='Specify a custom name for the trained model which will be saved in the "models" dir',
                         metavar='None')
-    parser.add_argument('-phase', '--pipeline_phase', nargs="+", default=None,
+    parser.add_argument('-phase', '--pipeline_phases', nargs="+", default=None,
                         choices=["data", "train", "eval"],
                         help='If specified, only the selected part(s) of the pipeline are carried out. By default, all '
                              'phases are performed',
@@ -106,8 +106,8 @@ if __name__ == '__main__':
     # lowercase conversion to standardize
     args.t5_tasks = [task_name.lower() for task_name in args.t5_tasks]
 
-    if args.pipeline_phase is None:
-        args.t5_tasks = ["data", "train", "eval"]
+    if args.pipeline_phases is None:
+        args.pipeline_phases = ["data", "train", "eval"]
 
     if args.log_wandb:
 
