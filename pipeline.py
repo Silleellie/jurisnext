@@ -42,7 +42,7 @@ if __name__ == '__main__':
                         metavar='2')
     parser.add_argument('-seed', '--random_seed', type=int, default=42,
                         help='random seed', metavar='42')
-    parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?',
+    parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?', required=True,
                         choices=['t5', 'bert', 'nli_deberta', 'multimodal'],
                         help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
                              'bert to finetune a bert checkpoint for Next Title Prediction, '
@@ -60,6 +60,16 @@ if __name__ == '__main__':
     parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
                         help='Specify the number of test set to sample for evaluating the model trained',
                         metavar='10')
+    parser.add_argument('-t5_t', '--t5_tasks', nargs="+", default=None,
+                        choices=["directNTP", "directNTPSideInfo", "boolNTP"],
+                        help='Specify which train task to use to fine tune NTPT55. If not specified, all defined tasks '
+                             'will be used. This parameter controls also which tasks are used in the eval phase, note'
+                             'that boolNTP will be ignored in this phase (as it is a support task)',
+                        metavar='None')
+    parser.add_argument('-t5_kw_min', '--t5_keyword_min_occ', type=int, default=None,
+                        help='Specify what is the min occurrences that a keyword should have in order to be picked as '
+                             'side info. If not specified, keywords will be sampled randomly',
+                        metavar='None')
     parser.add_argument('-ngram', '--ngram_label', type=int, default=None,
                         help='Specify the max number of ngram that a label can have. If None, all ngrams are used',
                         metavar='None')
@@ -68,6 +78,11 @@ if __name__ == '__main__':
                         metavar='cuda:0')
     parser.add_argument('-e', '--exp_name', type=str, default=None,
                         help='Specify a custom name for the trained model which will be saved in the "models" dir',
+                        metavar='None')
+    parser.add_argument('-phase', '--pipeline_phase', nargs="+", default=None,
+                        choices=["data", "train", "eval"],
+                        help='If specified, only the selected part(s) of the pipeline are carried out. By default, all '
+                             'phases are performed',
                         metavar='None')
 
     args = parser.parse_args()
@@ -78,6 +93,15 @@ if __name__ == '__main__':
     if args.exp_name is None:
         # replace '/' with '_' to avoid creation of subdir (google/flan-t5-small -> google_flan-t5-small)
         args.exp_name = f"{args.checkpoint.replace('/', '_')}_{args.epochs}"
+
+    if args.t5_tasks is None:
+        args.t5_tasks = ["directNTP", "directNTPSideInfo", "boolNTP"]
+
+    # lowercase conversion to standardize
+    args.t5_tasks = [task_name.lower() for task_name in args.t5_tasks]
+
+    if args.pipeline_phase is None:
+        args.t5_tasks = ["data", "train", "eval"]
 
     if args.log_wandb:
 
@@ -94,63 +118,79 @@ if __name__ == '__main__':
     # set fixed seed for experiment across all libraries used
     seed_everything(args.random_seed)
 
-    # split dataset and save to disk
-    with init_wandb(exp_config.exp_name, 'data', log=exp_config.log_wandb):
+    # DATA PIPELINE
+    if 'data' in exp_config.pipeline_phases:
 
-        if exp_config.log_wandb:
-            wandb.config.update({
-                "n_test_set": exp_config.n_test_set,
-                "random_seed": exp_config.random_seed,
-                "ngram_label": exp_config.ngram_label,
+        # split dataset and save to disk
+        with init_wandb(exp_config.exp_name, 'data', log=exp_config.log_wandb):
 
-                # these are hardcoded
-                "shuffle": True,
-                "split_test_size": 0.2,
-                "split_val_size": 0.1
-            })
+            if exp_config.log_wandb:
+                wandb.config.update({
+                    "n_test_set": exp_config.n_test_set,
+                    "random_seed": exp_config.random_seed,
+                    "ngram_label": exp_config.ngram_label,
 
-        data_main(exp_config)
+                    # these are hardcoded
+                    "shuffle": True,
+                    "split_test_size": 0.2,
+                    "split_val_size": 0.1
+                })
 
-    # train model
-    model = args.model
-    _, model_train_func, model_eval_func = available_models_fns[model]
+            data_main(exp_config)
 
-    with init_wandb(exp_config.exp_name, 'train', log=exp_config.log_wandb):
+    # TRAIN PIPELINE
+    if 'train' in exp_config.pipeline_phases:
+        model = args.model
+        _, model_train_func, _ = available_models_fns[model]
 
-        if exp_config.log_wandb:
-            wandb.config.update({
-                "n_epochs": exp_config.epochs,
-                "train_batch_size": exp_config.train_batch_size,
-                "eval_batch_size": exp_config.eval_batch_size,
-                "random_seed": exp_config.random_seed,
-                "model": exp_config.model,
-                "checkpoint": exp_config.checkpoint,
-                "use_clusters": exp_config.use_clusters,
-                "device": exp_config.device
-            })
+        with init_wandb(exp_config.exp_name, 'train', log=exp_config.log_wandb):
 
-        model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
-        model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
+            if exp_config.log_wandb:
 
-        if exp_config.log_wandb:
-            for file in os.listdir(model_path):
+                wandb_dict = {
+                    "n_epochs": exp_config.epochs,
+                    "train_batch_size": exp_config.train_batch_size,
+                    "eval_batch_size": exp_config.eval_batch_size,
+                    "random_seed": exp_config.random_seed,
+                    "model": exp_config.model,
+                    "checkpoint": exp_config.checkpoint,
+                    "use_clusters": exp_config.use_clusters,
+                    "device": exp_config.device
+                }
 
-                # load various config json of the model fit as artifact
-                if Path(file).suffix == ".json":
-                    art = wandb.Artifact(name=file, type=f"hf_config_{exp_config.model}")
-                    art.add_file(os.path.join(model_path, file))
+                if args.model == "t5":
+                    wandb_dict["t5_tasks"] = exp_config.t5_tasks
+                    wandb_dict["t5_keyword_min_occ"] = exp_config.t5_keyword_min_occ
 
-                    wandb.log_artifact(art)
+                wandb.config.update()
 
-    # eval the fit model
-    with init_wandb(exp_config.exp_name, 'eval', log=exp_config.log_wandb):
+            model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
+            model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
 
-        if exp_config.log_wandb:
-            wandb.config.update({
-                "n_test_set": exp_config.n_test_set,
-                "ngram_label": exp_config.ngram_label,
-                "eval_batch_size": exp_config.eval_batch_size,
-                "random_seed": exp_config.random_seed,
-            })
+            if exp_config.log_wandb:
+                for file in os.listdir(model_path):
 
-        model_eval_func(exp_config)
+                    # load various config json of the model fit as artifact
+                    if Path(file).suffix == ".json":
+                        art = wandb.Artifact(name=file, type=f"hf_config_{exp_config.model}")
+                        art.add_file(os.path.join(model_path, file))
+
+                        wandb.log_artifact(art)
+
+    # EVAL PIPELINE
+    if 'eval' in exp_config.pipeline_phases:
+
+        model = args.model
+        _, _, model_eval_func = available_models_fns[model]
+
+        with init_wandb(exp_config.exp_name, 'eval', log=exp_config.log_wandb):
+
+            if exp_config.log_wandb:
+                wandb.config.update({
+                    "n_test_set": exp_config.n_test_set,
+                    "ngram_label": exp_config.ngram_label,
+                    "eval_batch_size": exp_config.eval_batch_size,
+                    "random_seed": exp_config.random_seed,
+                })
+
+            model_eval_func(exp_config)
