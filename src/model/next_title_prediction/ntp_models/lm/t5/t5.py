@@ -76,7 +76,6 @@ class NTPT5Config(NTPConfig, T5Config):
 
 
 class NTPT5(NTPModelHF):
-
     model_class = T5ForConditionalGeneration
     config_class = NTPT5Config
     default_checkpoint = 'google/flan-t5-small'
@@ -199,7 +198,6 @@ class NTPT5(NTPModelHF):
 
 
 def t5_main(exp_config: ExperimentConfig):
-
     n_epochs = exp_config.epochs
     batch_size = exp_config.train_batch_size
     eval_batch_size = exp_config.eval_batch_size
@@ -216,19 +214,27 @@ def t5_main(exp_config: ExperimentConfig):
     dataset = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
 
+    train = dataset["train"]
+    val = dataset["validation"]
+
     cluster_label = None
 
-    train_tasks = [
-        DirectNTP(),
-        DirectNTPSideInfo(),
-        BoolNTP(list(all_unique_labels))
-    ]
+    all_rel_keywords = train["rel_keywords_sequence"] + val["input_keywords_sequence"]
+
+    train_task_list = []
+
+    if 'directntp' in exp_config.t5_tasks:
+        train_task_list.append(DirectNTP())
+    if 'directntpsideinfo':
+        train_task_list.append(DirectNTPSideInfo(all_rel_keywords, minimum_occ_number=exp_config.t5_keyword_min_occ))
+    if 'boolntp':
+        train_task_list.append(BoolNTP(all_unique_labels))
+
+    test_task = train_task_list[0]
 
     sent_encoder = SentenceTransformerEncoder(
         device=device,
     )
-
-    test_task = DirectNTPSideInfo()
 
     if use_cluster_alg:
         clus_alg = KMeansAlg(
@@ -240,14 +246,14 @@ def t5_main(exp_config: ExperimentConfig):
 
         cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
         test_task = ClusteredNTPSideInfo()
-        train_tasks.extend([ClusteredNTP(), ClusteredNTPSideInfo()])
+        train_task_list.extend([ClusteredNTP(), ClusteredNTPSideInfo()])
 
     model_ntp = NTPT5(
         checkpoint,
         sentence_encoder=sent_encoder,
         cluster_label_mapper=cluster_label,
 
-        training_tasks=train_tasks,
+        training_tasks=train_task_list,
         test_task=test_task,
         all_unique_labels=list(all_unique_labels),
         device=device
@@ -269,14 +275,12 @@ def t5_main(exp_config: ExperimentConfig):
         random_seed=exp_config.random_seed
     )
 
-    train = dataset["train"]
-    val = dataset["validation"]
-
     trainer.train(train, val)
 
     return trainer.output_name
 
 
 if __name__ == "__main__":
-
-    t5_main(ExperimentConfig("t5", None, "prova"))
+    t5_main(ExperimentConfig(model="t5", checkpoint=None, exp_name=None,
+                             t5_tasks=["directntp", "directntpsideinfo", "boolntp"], pipeline_phases=["train"],
+                             n_test_set=2, epochs=2))
