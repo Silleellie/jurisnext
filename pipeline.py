@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import os
 from pathlib import Path
 
@@ -123,6 +124,9 @@ if __name__ == '__main__':
                              'Please set the environment variable and add the entity for wandb logs\n')
 
     exp_config = ExperimentConfig(**vars(args))
+
+    print("Experiment configuration:")
+    print(dataclasses.asdict(exp_config))
 
     # set fixed seed for experiment across all libraries used
     seed_everything(args.random_seed)
