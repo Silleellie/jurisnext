@@ -97,7 +97,7 @@ class Hit(RankingMetric):
     def __call__(self, predictions: np.ndarray[np.ndarray[str]], truths: np.ndarray[str]) -> float:
         predictions = predictions[:, :self.k] if self.k is not None else predictions
 
-        return np.mean(np.isin(truths, predictions)).item()
+        return np.mean(np.any(truths[:, np.newaxis] == predictions, axis=1)).item()
 
 
 class MAP(RankingMetric):
