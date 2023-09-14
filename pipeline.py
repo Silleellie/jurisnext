@@ -6,7 +6,7 @@ from pathlib import Path
 import wandb
 
 from src.data.legal_dataset import data_main
-from src.evaluation.ntp_models_eval.legal_bert_no_finetune import no_finetune_eval_main
+from src.evaluation.ntp_models_eval.no_finetune import no_finetune_eval_main
 from src.model.next_title_prediction.ntp_models.bert import bert_main, NTPBert
 from src.model.next_title_prediction.ntp_models.lm.t5.t5 import t5_main, NTPT5
 from src.model.next_title_prediction.ntp_models.multimodal.fusion import multimodal_main
