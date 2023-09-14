@@ -5,6 +5,7 @@ from pathlib import Path
 import wandb
 
 from src.data.legal_dataset import data_main
+from src.evaluation.ntp_models_eval.legal_bert_no_finetune import no_finetune_eval_main
 from src.model.next_title_prediction.ntp_models.bert import bert_main, NTPBert
 from src.model.next_title_prediction.ntp_models.lm.t5.t5 import t5_main, NTPT5
 from src.model.next_title_prediction.ntp_models.multimodal.fusion import multimodal_main
@@ -24,7 +25,9 @@ available_models_fns = {
     "nli_deberta": (NTPNliDeberta.default_checkpoint, nli_deberta_main, nli_deberta_eval_main),
 
     # multimodal is not a pretrained model, has no default checkpoint
-    "multimodal": ('multimodal_fusion', multimodal_main, multimodal_eval_main)
+    "multimodal": ('multimodal_fusion', multimodal_main, multimodal_eval_main),
+
+    "no_finetune": ('no_finetune', None, no_finetune_eval_main)
 }
 
 
@@ -43,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('-seed', '--random_seed', type=int, default=42,
                         help='random seed', metavar='42')
     parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?', required=True,
-                        choices=['t5', 'bert', 'nli_deberta', 'multimodal'],
+                        choices=['t5', 'bert', 'nli_deberta', 'multimodal', 'no_finetune'],
                         help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
                              'bert to finetune a bert checkpoint for Next Title Prediction, '
                              'nli_deberta to finetune a deberta checkpoint for Next Title Prediction, '
@@ -124,6 +127,9 @@ if __name__ == '__main__':
     # set fixed seed for experiment across all libraries used
     seed_everything(args.random_seed)
 
+    if args.model == "no_finetune":
+        print("'No fine tune' experiment chosen, only evaluation phase will be performed!")
+
     # DATA PIPELINE
     if 'data' in exp_config.pipeline_phases:
 
@@ -144,8 +150,8 @@ if __name__ == '__main__':
 
             data_main(exp_config)
 
-    # TRAIN PIPELINE
-    if 'train' in exp_config.pipeline_phases:
+    # TRAIN PIPELINE: if "no_finetune" experiment, we skip this
+    if 'train' in exp_config.pipeline_phases and args.model != "no_finetune":
         model = args.model
         _, model_train_func, _ = available_models_fns[model]
 
