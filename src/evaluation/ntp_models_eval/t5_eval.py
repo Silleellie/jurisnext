@@ -169,7 +169,7 @@ def t5_eval_main(exp_config: ExperimentConfig):
 
     # SAVE RESULTS in reports/metrics
 
-    os.makedirs(os.path.join(METRICS_DIR, ntp_model.config.name_or_path), exist_ok=True)
+    os.makedirs(os.path.join(METRICS_DIR, exp_config.exp_name), exist_ok=True)
 
     for task_name, (all_results, avg_results) in ranking_task_results.items():
         os.makedirs(os.path.join(METRICS_DIR, exp_config.exp_name, task_name), exist_ok=True)
