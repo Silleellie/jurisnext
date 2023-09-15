@@ -83,6 +83,8 @@ if __name__ == '__main__':
                              'picked sequences (starting always from the first element), "augment" will consider all '
                              'possible incremental sequences',
                         metavar='random')
+    parser.add_argument('-clean_kdws', '--clean_stopwords_kwds', action=argparse.BooleanOptionalAction, default=False,
+                        help='Specify whether to remove stopwords from the keywords column of the dataset or not')
     parser.add_argument('-d', '--device', type=str, default="cuda:0",
                         help='Specify the device which should be used during the experiment',
                         metavar='cuda:0')
@@ -146,6 +148,7 @@ if __name__ == '__main__':
                     "random_seed": exp_config.random_seed,
                     "ngram_label": exp_config.ngram_label,
                     "seq_sampling_strategy": exp_config.seq_sampling_strategy,
+                    "clean_stopwords_kwds": exp_config.clean_stopwords_kwds,
 
                     # these are hardcoded
                     "shuffle": True,

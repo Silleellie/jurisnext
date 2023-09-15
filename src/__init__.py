@@ -18,7 +18,6 @@ METRICS_DIR = os.path.join(REPORTS_DIR, "metrics")
 @dataclass
 class ExperimentConfig:
 
-    # these 5 are set in pipeline.py depending on cmd parameters passed
     model: Optional[str] = None
     checkpoint: Optional[str] = None
     exp_name: Optional[str] = None
@@ -32,6 +31,7 @@ class ExperimentConfig:
     n_test_set: int = 10
     ngram_label: Optional[int] = None
     seq_sampling_strategy: Literal['random', 'augment'] = "random"
+    clean_stopwords_kwds: bool = False
     t5_keyword_min_occ: Optional[int] = None
     t5_tasks: List[str] = None
     device: str = "cuda:0"

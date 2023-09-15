@@ -112,6 +112,7 @@ SeqTargetTuple = namedtuple("SeqTargetTuple", ["seq_title", "target_title",
                                                "seq_text", "target_text",
                                                "seq_keywords", "target_keywords"])
 
+
 class LegalDataset:
     cleaned_dataset_path: str = os.path.join(INTERIM_DATA_DIR, "cleaned_dataframe.pkl")
     train_path: str = os.path.join(PROCESSED_DATA_DIR, "train.pkl")
@@ -402,7 +403,9 @@ def data_main(exp_config: ExperimentConfig):
 
     original_df: pd.DataFrame = pd.read_pickle(original_df_path)
     cleaned_df = clean_original_dataset(original_df)
-    cleaned_df = clean_keywords(cleaned_df)
+
+    if exp_config.remove_stopwords_kwds is True:
+        cleaned_df = clean_keywords(cleaned_df)
 
     ngram_cut_df = max_ngram_cut(cleaned_df, cutoff_ngram=exp_config.ngram_label)
     ngram_cut_df.to_pickle(cleaned_df_output_path)
