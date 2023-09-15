@@ -63,8 +63,6 @@ if __name__ == '__main__':
     parser.add_argument('-ck', '--checkpoint', type=str, default=None,
                         help='Add checkpoint to use for train (e.g. google/flan-t5-small with t5 model)',
                         metavar='None')
-    parser.add_argument('--use_clusters', action=argparse.BooleanOptionalAction, default=False,
-                        help='Use default clustering algorithm associated with the model during train and eval')
     parser.add_argument('--log_wandb', action=argparse.BooleanOptionalAction, default=False,
                         help='Log pipeline information regarding data, train and eval on wandb')
     parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
@@ -180,7 +178,6 @@ if __name__ == '__main__':
                     "random_seed": exp_config.random_seed,
                     "model": exp_config.model,
                     "checkpoint": exp_config.checkpoint,
-                    "use_clusters": exp_config.use_clusters,
                     "device": exp_config.device
                 }
 
