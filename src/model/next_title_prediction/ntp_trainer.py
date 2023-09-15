@@ -62,7 +62,9 @@ class NTPTrainer:
         # ceil because we don't drop the last batch
         total_n_batch = ceil(train_dataset.num_rows / self.batch_size)
 
-        best_val_monitor_result = 0
+        # depending on the monitor strategy, we want either this to decrease or to increase,
+        # so we have a different initialization
+        best_val_monitor_result = np.inf if self.monitor_strategy == "loss" else 0
         train_step = 0
         val_step = 0
         best_epoch = -1
