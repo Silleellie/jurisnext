@@ -1,9 +1,7 @@
-import os
-from typing import Dict, Union, List, Any, Optional
+from typing import Dict, Union, List
 
 import numpy as np
 import torch
-from sklearn.utils import compute_class_weight
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedModel, PretrainedConfig
 
@@ -21,7 +19,6 @@ class MultimodalFusionConfig(PretrainedConfig, NTPConfig):
             image_encoder_params: dict = None,
             text_encoder_params: dict = None,
             max_seq_len: int = 100,
-            labels_weights: list = None,
             device: str = 'cpu',
             **kwargs
     ):
@@ -32,59 +29,6 @@ class MultimodalFusionConfig(PretrainedConfig, NTPConfig):
         self.image_encoder_params = image_encoder_params
         self.text_encoder_params = text_encoder_params
         self.max_seq_len = max_seq_len
-
-        self.labels_weights = labels_weights
-        if self.labels_weights is not None:
-            self.labels_weights = torch.from_numpy(np.array(labels_weights)).float().to(device)
-
-    @classmethod
-    def from_pretrained(cls,
-                        pretrained_model_name_or_path: Union[str, os.PathLike],
-                        cache_dir: Optional[Union[str, os.PathLike]] = None,
-                        force_download: bool = False,
-                        local_files_only: bool = False,
-                        token: Optional[Union[str, bool]] = None,
-                        revision: str = "main",
-                        **kwargs):
-
-        inst, unused_kwargs = super().from_pretrained(
-            pretrained_model_name_or_path=pretrained_model_name_or_path,
-            cache_dir=cache_dir,
-            force_download=force_download,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            **kwargs
-        )
-
-        # when loaded from path, labels weights is transformed already into a tensor by init,
-        # that's why we need this further check
-        if isinstance(inst.labels_weights, list):
-            inst.labels_weights = torch.from_numpy(np.array(inst.labels_weights)).float().to(inst.device)
-
-        return inst, unused_kwargs
-
-    def save_pretrained(self,
-                        save_directory: Union[str, os.PathLike],
-                        push_to_hub: bool = False,
-                        **kwargs):
-
-        self.labels_weights = self.labels_weights.tolist()
-
-        super().save_pretrained(save_directory=save_directory,
-                                push_to_hub=push_to_hub,
-                                **kwargs)
-
-        self.labels_weights = torch.from_numpy(np.array(self.labels_weights)).float().to(self.device)
-
-    # to make __repr__ work we need to convert the tensor to a json serializable format
-    def to_dict(self) -> Dict[str, Any]:
-        super_dict = super().to_dict()
-
-        if isinstance(super_dict["labels_weights"], torch.Tensor):
-            super_dict["labels_weights"] = super_dict["labels_weights"].tolist()
-
-        return super_dict
 
 
 class MultimodalFusion(PreTrainedModel):
@@ -264,8 +208,7 @@ class NTPMultimodalFusion(NTPModel):
 
         loss = torch.nn.functional.cross_entropy(
             output,
-            truth,
-            weight=self.config.labels_weights
+            truth
         )
 
         return loss
@@ -279,8 +222,7 @@ class NTPMultimodalFusion(NTPModel):
 
         val_loss = torch.nn.functional.cross_entropy(
             output,
-            truth,
-            weight=self.config.labels_weights
+            truth
         )
 
         predictions = [self.config.id2label[x.cpu().item()] for x in predictions]
@@ -304,15 +246,6 @@ def multimodal_main(exp_config: ExperimentConfig):
     train = dataset["train"]
     val = dataset["validation"]
 
-    all_train_labels_occurrences = [y for x in train for y in x['input_title_sequence']]
-    # "smoothing" so that a weight can be calculated for labels which do not appear in the
-    # train set
-    all_train_labels_occurrences.extend(all_unique_labels)
-
-    labels_weights = compute_class_weight(class_weight='balanced',
-                                          classes=all_unique_labels,
-                                          y=all_train_labels_occurrences)
-
     model = MultimodalFusionForSequenceClassification(
         MultimodalFusionConfig(
             image_encoder_params={
@@ -329,7 +262,6 @@ def multimodal_main(exp_config: ExperimentConfig):
             max_seq_len=100,
             label2id={x: i for i, x in enumerate(all_unique_labels)},
             id2label={i: x for i, x in enumerate(all_unique_labels)},
-            labels_weights=list(labels_weights),
             device=device
         ),
     )

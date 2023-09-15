@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
-
-import numpy as np
 import torch
-from sklearn.utils import compute_class_weight
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertForSequenceClassification, BertConfig
 
@@ -17,38 +13,10 @@ from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 class NTPBertConfig(BertConfig, NTPConfig):
 
     def __init__(self,
-                 labels_weights: list = None,
                  device: str = "cpu",
                  **kwargs):
         BertConfig.__init__(self, **kwargs)
         NTPConfig.__init__(self, device)
-
-        self.labels_weights = labels_weights
-        if labels_weights is not None:
-            self.labels_weights = torch.from_numpy(np.array(labels_weights)).float().to(device)
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any], **kwargs):
-
-        labels_weights: Optional[torch.Tensor] = kwargs.pop("labels_weights", None)
-        device: Optional[str] = kwargs.pop("device", None)
-
-        if labels_weights is not None:
-            config_dict["labels_weights"] = labels_weights
-
-        if device is not None:
-            config_dict["device"] = device
-
-        return super().from_dict(config_dict, **kwargs)
-
-    # to make __repr__ work we need to convert the tensor to a json serializable format
-    def to_dict(self) -> Dict[str, Any]:
-        super_dict = super().to_dict()
-
-        if isinstance(super_dict["labels_weights"], torch.Tensor):
-            super_dict["labels_weights"] = super_dict["labels_weights"].tolist()
-
-        return super_dict
 
 
 # maybe consider composition rather than multiple inheritance
@@ -98,36 +66,20 @@ class NTPBert(NTPModelHF):
         return input_dict
 
     def train_step(self, batch):
-
         output = self(**batch)
-        truth = batch["labels"]
-
-        loss = torch.nn.functional.cross_entropy(
-            output.logits,
-            truth,
-            weight=self.config.labels_weights
-        )
-
-        return loss
+        return output.loss
 
     @torch.no_grad()
     def valid_step(self, batch):
-
         output = self(**batch)
         truth = batch["labels"]
         # batch size (batch_size, num_labels) -> (batch_size, 1)
         predictions = output.logits.argmax(dim=1)
 
-        val_loss = torch.nn.functional.cross_entropy(
-            output.logits,
-            truth,
-            weight=self.config.labels_weights
-        )
-
         predictions = [self.config.id2label[x.cpu().item()] for x in predictions]
         truth = [self.config.id2label[x.cpu().item()] for x in truth]
 
-        return predictions, truth, val_loss
+        return predictions, truth, output.loss
 
 
 def bert_main(exp_config: ExperimentConfig):
@@ -149,15 +101,6 @@ def bert_main(exp_config: ExperimentConfig):
     train = dataset["train"]
     val = dataset["validation"]
 
-    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
-    # "smoothing" so that a weight can be calculated for labels which do not appear in the
-    # train set
-    all_train_labels_occurrences.extend(all_unique_labels)
-
-    labels_weights = compute_class_weight(class_weight='balanced',
-                                          classes=all_unique_labels,
-                                          y=all_train_labels_occurrences)
-
     ntp_model = NTPBert(
         checkpoint,
 
@@ -166,7 +109,6 @@ def bert_main(exp_config: ExperimentConfig):
         label2id={x: i for i, x in enumerate(all_unique_labels)},
         id2label={i: x for i, x in enumerate(all_unique_labels)},
 
-        labels_weights=list(labels_weights),
         device=device
     )
 
