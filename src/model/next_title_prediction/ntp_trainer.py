@@ -129,19 +129,21 @@ class NTPTrainer:
                                                        epoch=epoch)
 
                 if self.monitor_strategy == "loss":
-                    metric_str = "loss"
-                    metric_val = val_result["loss"]
+                    monitor_str = "Val loss"
+                    monitor_val = val_result["loss"]
+                    should_save = monitor_val < best_val_monitor_result  # we want loss to decrease
                 else:
-                    metric_obj, metric_val = val_result["metric"]
-                    metric_str = str(metric_obj)
+                    metric_obj, monitor_val = val_result["metric"]
+                    monitor_str = str(metric_obj)
+                    should_save = monitor_val > best_val_monitor_result  # we want metric (acc/hit) to increase
 
                 # we save the best model based on the reference metric result
-                if metric_val > best_val_monitor_result:
+                if should_save:
                     best_epoch = epoch + 1
-                    best_val_monitor_result = metric_val
+                    best_val_monitor_result = monitor_val
                     self.ntp_model.save(self.output_path)
 
-                    print(f"{metric_str} improved, model saved into {self.output_path}!")
+                    print(f"{monitor_str} improved, model saved into {self.output_path}!")
 
         if self.log_wandb:
             wandb.log({
