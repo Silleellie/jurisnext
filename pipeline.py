@@ -145,6 +145,7 @@ if __name__ == '__main__':
                     "n_test_set": exp_config.n_test_set,
                     "random_seed": exp_config.random_seed,
                     "ngram_label": exp_config.ngram_label,
+                    "seq_sampling_strategy": exp_config.seq_sampling_strategy,
 
                     # these are hardcoded
                     "shuffle": True,
