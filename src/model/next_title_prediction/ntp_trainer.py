@@ -11,7 +11,7 @@ import wandb
 from tqdm import tqdm
 
 from src import MODELS_DIR
-from src.evaluation.metrics import Hit, Accuracy
+from src.evaluation.metrics import Hit, Accuracy, Metric
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel
 
 
@@ -60,11 +60,7 @@ class NTPTrainer:
         # ceil because we don't drop the last batch
         total_n_batch = ceil(train_dataset.num_rows / self.batch_size)
 
-        # early stopping parameters
-        min_val_loss = np.inf
-        no_change_counter = 0
-        min_delta = 1e-4
-
+        best_val_metric_result = 0
         train_step = 0
         val_step = 0
         best_epoch = -1
@@ -75,11 +71,6 @@ class NTPTrainer:
         for epoch in range(0, self.n_epochs):
 
             self.ntp_model.train()
-
-            # if no significant change happens to the loss after 10 epochs then early stopping
-            if no_change_counter == 10:
-                print("No significant improvement to validation loss in the last 10 epochs, early stopping!")
-                break
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
             shuffled_train = train_dataset.shuffle(seed=self.random_seed)
@@ -131,25 +122,24 @@ class NTPTrainer:
             pbar.close()
 
             if validation_dataset is not None:
-                val_loss, val_step = self.validation(preprocessed_validation=preprocessed_val, val_step=val_step,
-                                                     epoch=epoch)
+                val_result, val_step = self.validation(preprocessed_validation=preprocessed_val,
+                                                       val_step=val_step,
+                                                       epoch=epoch)
 
-                # if there is a significant difference between the last minimum loss and the current one
-                # set it as the new min loss and save the model parameters
-                if (min_val_loss - val_loss) > min_delta:
+                val_metric_obj, val_metric_result = val_result["val_metric"]
+
+                # we save the best model based on the reference metric result
+                if val_metric_result > best_val_metric_result:
                     best_epoch = epoch + 1
-                    no_change_counter = 0
-                    min_val_loss = val_loss
+                    best_val_metric_result = val_metric_result
                     self.ntp_model.save(self.output_path)
 
-                    print(f"Validation loss improved, model saved into {self.output_path}!")
-                else:
-                    no_change_counter += 1
+                    print(f"{val_metric_obj} improved, model saved into {self.output_path}!")
 
         if self.log_wandb:
             wandb.log({
                 'train/best_model_epoch': best_epoch,
-                'train/train time (sec)': int(time.time() - start)
+                'train/train time (sec)': int(time.time() - start) / 60  # we log minutes instead of secs
             })
 
         print(" Train completed! Check models saved into 'models' dir ".center(100, "*"))
@@ -165,6 +155,7 @@ class NTPTrainer:
         pbar_val = tqdm(preprocessed_validation.iter(batch_size=self.eval_batch_size),
                         total=total_n_batch)
 
+        metric: Metric = Accuracy()
         val_loss = 0
         total_preds = []
         total_truths = []
@@ -184,7 +175,6 @@ class NTPTrainer:
                 preds_so_far = np.array(total_preds)
                 truths_so_far = np.array(total_truths)
 
-                metric = Accuracy()
                 if len(preds_so_far.squeeze().shape) > 1:
                     metric = Hit()
 
@@ -205,6 +195,9 @@ class NTPTrainer:
 
         pbar_val.close()
 
+        val_loss /= len(pbar_val)
+        val_metric = metric(np.array(total_preds).squeeze(), np.array(total_truths))
+
         # val_loss is computed for the entire batch, not for each sample, that's why is safe
         # to use pbar_val
-        return val_loss / len(pbar_val), val_step
+        return {"val_loss": val_loss, "val_metric": (metric, val_metric)}, val_step
