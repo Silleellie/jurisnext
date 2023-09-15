@@ -404,7 +404,7 @@ def data_main(exp_config: ExperimentConfig):
     original_df: pd.DataFrame = pd.read_pickle(original_df_path)
     cleaned_df = clean_original_dataset(original_df)
 
-    if exp_config.remove_stopwords_kwds is True:
+    if exp_config.clean_stopwords_kwds is True:
         cleaned_df = clean_keywords(cleaned_df)
 
     ngram_cut_df = max_ngram_cut(cleaned_df, cutoff_ngram=exp_config.ngram_label)
