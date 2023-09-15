@@ -6,16 +6,20 @@ from pathlib import Path
 import wandb
 
 from src.data.legal_dataset import data_main
+from src.evaluation.ntp_models_eval.cnn_eval import cnn_eval_main
+from src.evaluation.ntp_models_eval.lstm_eval import lstm_eval_main
 from src.evaluation.ntp_models_eval.no_finetune import no_finetune_eval_main
 from src.model.next_title_prediction.ntp_models.bert import bert_main, NTPBert
+from src.model.next_title_prediction.ntp_models.custom_encoders.cnn_encoder_model import cnn_model_main
+from src.model.next_title_prediction.ntp_models.custom_encoders.lstm_encoder_model import lstm_model_main
 from src.model.next_title_prediction.ntp_models.lm.t5.t5 import t5_main, NTPT5
-from src.model.next_title_prediction.ntp_models.multimodal.fusion import multimodal_main
+from src.model.next_title_prediction.ntp_models.custom_encoders.fusion import fusion_main
 from src.model.next_title_prediction.ntp_models.nli_deberta import nli_deberta_main, NTPNliDeberta
 
 from src.evaluation.ntp_models_eval.t5_eval import t5_eval_main
 from src.evaluation.ntp_models_eval.bert_eval import bert_eval_main
 from src.evaluation.ntp_models_eval.nli_deberta_eval import nli_deberta_eval_main
-from src.evaluation.ntp_models_eval.fusion_eval import multimodal_eval_main
+from src.evaluation.ntp_models_eval.fusion_eval import fusion_eval_main
 
 from src.utils import seed_everything, init_wandb
 from src import ExperimentConfig, MODELS_DIR
@@ -25,8 +29,10 @@ available_models_fns = {
     "bert": (NTPBert.default_checkpoint, bert_main, bert_eval_main),
     "nli_deberta": (NTPNliDeberta.default_checkpoint, nli_deberta_main, nli_deberta_eval_main),
 
-    # multimodal is not a pretrained model, has no default checkpoint
-    "multimodal": ('multimodal_fusion', multimodal_main, multimodal_eval_main),
+    # fusion is not a pretrained model, has no default checkpoint
+    "fusion": ('fusion', fusion_main, fusion_eval_main),
+    "lstm": ('lstm', lstm_model_main, lstm_eval_main),
+    "cnn": ('cnn', cnn_model_main, cnn_eval_main),
 
     "no_finetune": ('no_finetune', None, no_finetune_eval_main)
 }
@@ -53,7 +59,7 @@ if __name__ == '__main__':
                              'Hit) will be used to save the best model',
                         metavar='metric')
     parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?', required=True,
-                        choices=['t5', 'bert', 'nli_deberta', 'multimodal', 'no_finetune'],
+                        choices=['t5', 'bert', 'nli_deberta', 'fusion', 'lstm', 'cnn', 'no_finetune'],
                         help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
                              'bert to finetune a bert checkpoint for Next Title Prediction, '
                              'nli_deberta to finetune a deberta checkpoint for Next Title Prediction, '
