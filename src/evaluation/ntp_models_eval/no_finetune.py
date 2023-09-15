@@ -160,10 +160,10 @@ def no_finetune_eval_main(exp_config: ExperimentConfig):
                                         for metric in classification_metric_list}
 
         all_ranking_results["fill_mask"].append(ranking_eval_mask)
-        all_ranking_results["fill_mask"].append(ranking_eval_zeroshot)
+        all_ranking_results["zeroshot"].append(ranking_eval_zeroshot)
 
         all_classification_results["fill_mask"].append(classification_eval_mask)
-        all_classification_results["fill_mask"].append(classification_eval_zeroshot)
+        all_classification_results["zeroshot"].append(classification_eval_zeroshot)
 
     # RANKING METRICS
     # from list of dicts to dict of lists
