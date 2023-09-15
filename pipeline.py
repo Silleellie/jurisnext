@@ -179,8 +179,6 @@ if __name__ == '__main__':
                     wandb_dict["t5_tasks"] = exp_config.t5_tasks
                     wandb_dict["t5_keyword_min_occ"] = exp_config.t5_keyword_min_occ
 
-                wandb.config.update()
-
             model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
             model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
 
