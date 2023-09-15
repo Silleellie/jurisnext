@@ -252,6 +252,7 @@ def t5_main(exp_config: ExperimentConfig):
         log_wandb=exp_config.log_wandb,
         random_seed=exp_config.random_seed,
         train_sampling_fn=sampling_fn,
+        monitor_strategy=exp_config.monitor_strategy
     )
 
     trainer.train(train, val)

@@ -2,7 +2,7 @@ import os
 import time
 from math import ceil
 
-from typing import Optional, Callable
+from typing import Optional, Callable, Literal
 
 import datasets
 import numpy as np
@@ -24,6 +24,7 @@ class NTPTrainer:
                  all_labels: np.ndarray,
                  train_sampling_fn: Callable,
                  device: str = 'cuda:0',
+                 monitor_strategy: Literal['loss', 'metric'] = 'metric',
                  eval_batch_size: Optional[int] = None,
                  output_name: Optional[str] = None,
                  log_wandb: bool = False,
@@ -38,6 +39,7 @@ class NTPTrainer:
         self.device = device
         self.log_wandb = log_wandb
         self.random_seed = random_seed
+        self.monitor_strategy = monitor_strategy
 
         # output name
         if output_name is None:
@@ -60,7 +62,7 @@ class NTPTrainer:
         # ceil because we don't drop the last batch
         total_n_batch = ceil(train_dataset.num_rows / self.batch_size)
 
-        best_val_metric_result = 0
+        best_val_monitor_result = 0
         train_step = 0
         val_step = 0
         best_epoch = -1
@@ -126,15 +128,20 @@ class NTPTrainer:
                                                        val_step=val_step,
                                                        epoch=epoch)
 
-                val_metric_obj, val_metric_result = val_result["val_metric"]
+                if self.monitor_strategy == "loss":
+                    metric_str = "loss"
+                    metric_val = val_result["loss"]
+                else:
+                    metric_obj, metric_val = val_result["metric"]
+                    metric_str = str(metric_obj)
 
                 # we save the best model based on the reference metric result
-                if val_metric_result > best_val_metric_result:
+                if metric_val > best_val_monitor_result:
                     best_epoch = epoch + 1
-                    best_val_metric_result = val_metric_result
+                    best_val_monitor_result = metric_val
                     self.ntp_model.save(self.output_path)
 
-                    print(f"{val_metric_obj} improved, model saved into {self.output_path}!")
+                    print(f"{metric_str} improved, model saved into {self.output_path}!")
 
         if self.log_wandb:
             wandb.log({
@@ -200,4 +207,4 @@ class NTPTrainer:
 
         # val_loss is computed for the entire batch, not for each sample, that's why is safe
         # to use pbar_val
-        return {"val_loss": val_loss, "val_metric": (metric, val_metric)}, val_step
+        return {"loss": val_loss, "metric": (metric, val_metric)}, val_step

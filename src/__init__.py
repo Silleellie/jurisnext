@@ -26,6 +26,7 @@ class ExperimentConfig:
     train_batch_size: int = 2
     eval_batch_size: int = 2
     random_seed: int = 42
+    monitor_strategy: Literal['loss', 'metric'] = 'metric'
     use_clusters: bool = False
     log_wandb: bool = False
     n_test_set: int = 10

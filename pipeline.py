@@ -46,6 +46,12 @@ if __name__ == '__main__':
                         metavar='2')
     parser.add_argument('-seed', '--random_seed', type=int, default=42,
                         help='random seed', metavar='42')
+    parser.add_argument('-monitor', '--monitor_strategy', type=str, default='metric', const='metric', nargs='?',
+                        choices=['loss', 'metric'],
+                        help='Choose the strategy used to save the best model. If "loss", the validation loss will be '
+                             'used to save the best model, if "metric", the reference metric (Accuracy weighted or '
+                             'Hit) will be used to save the best model',
+                        metavar='metric')
     parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?', required=True,
                         choices=['t5', 'bert', 'nli_deberta', 'multimodal', 'no_finetune'],
                         help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
