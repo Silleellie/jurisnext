@@ -1,4 +1,5 @@
 import os
+import time
 from math import ceil
 
 from typing import Optional, Callable
@@ -70,6 +71,7 @@ class NTPTrainer:
 
         optimizer = self.ntp_model.get_suggested_optimizer()
 
+        start = time.time()
         for epoch in range(0, self.n_epochs):
 
             self.ntp_model.train()
@@ -146,7 +148,8 @@ class NTPTrainer:
 
         if self.log_wandb:
             wandb.log({
-                'best_model_epoch': best_epoch
+                'train/best_model_epoch': best_epoch,
+                'train/train time (sec)': int(time.time() - start)
             })
 
         print(" Train completed! Check models saved into 'models' dir ".center(100, "*"))
