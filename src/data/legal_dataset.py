@@ -11,6 +11,7 @@ import datasets
 import numpy as np
 import pandas as pd
 import wandb
+from cytoolz import merge_with
 from datasets import Dataset, NamedSplit
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -212,11 +213,21 @@ class LegalDataset:
 
         grouped_split = grouped_split.reset_index()
 
+        list_of_dicts = grouped_split.to_dict(orient="records")
+        mapped_results = []
         if to_sample:
-            sampled_split = grouped_split.apply(self.perform_sampling, axis=1)
-            grouped_split = pd.DataFrame.from_records(sampled_split)
-            if self.sampling_strategy == "augment":
-                grouped_split = grouped_split.explode(column=grouped_split.columns.tolist())
+
+            # Process the data in batches of 1 row
+            # (we didn't invest time in vectorizing this op, so passing a higher batch size
+            # has no effect)
+            batch_size = 1
+            for i in range(0, len(list_of_dicts), batch_size):
+                # merge_with to uniform input of perform_sampling fn to that of hugging face map function
+                batch_dict = merge_with(list, *list_of_dicts[i:i + batch_size])
+                mapped_results.append(self.perform_sampling(batch_dict))
+
+            grouped_split = pd.DataFrame.from_records(mapped_results)
+            grouped_split = grouped_split.explode(column=grouped_split.columns.tolist())
 
         return grouped_split
 
@@ -229,61 +240,87 @@ class LegalDataset:
     @staticmethod
     def _sample_sequences(batch):
 
-        # a sequence has at least 1 data point, but it can have more depending on the length of the sequence
-        # We must ensure that at least an element can be used as test set
-        # in the "sliding_training_size" is included the target item
-        sliding_size = random.randint(1, len(batch["text_sequence"]) - 1)
-
-        # TO DO: consider starting always from the initial paragraph,
-        # rather than varying the starting point of the seq
-        # start_index = random.randint(0, len(batch["text_sequence"]) - sliding_size - 1)
-        start_index = 0
-        end_index = start_index + sliding_size
-
-        return {
-            "case_id": batch["case_id"],
-            "input_title_sequence": batch["title_sequence"][start_index:end_index],
-            "input_text_sequence": batch["text_sequence"][start_index:end_index],
-            "input_keywords_sequence": batch["rel_keywords_sequence"][start_index:end_index],
-            "immediate_next_title": batch["title_sequence"][end_index],
-            "immediate_next_text": batch["text_sequence"][end_index],
-            "immediate_next_rel_keywords": batch["rel_keywords_sequence"][end_index]
+        out_dict = {
+            "case_id": [],
+            "input_title_sequence": [],
+            "input_text_sequence": [],
+            "input_keywords_sequence": [],
+            "immediate_next_title": [],
+            "immediate_next_text": [],
+            "immediate_next_rel_keywords": []
         }
+
+        for case_id, title_sequence, text_sequence, rel_keywords_sequence in zip(batch["case_id"],
+                                                                                 batch["title_sequence"],
+                                                                                 batch["text_sequence"],
+                                                                                 batch["rel_keywords_sequence"]):
+            # a sequence has at least 1 data point, but it can have more depending on the length of the sequence
+            # We must ensure that at least an element can be used as test set
+            # in the "sliding_training_size" is included the target item
+            sliding_size = random.randint(1, len(title_sequence) - 1)
+
+            # TO DO: consider starting always from the initial paragraph,
+            # rather than varying the starting point of the seq
+            # start_index = random.randint(0, len(batch["text_sequence"]) - sliding_size - 1)
+            start_index = 0
+            end_index = start_index + sliding_size
+
+            out_dict["case_id"].append(case_id)
+            out_dict["input_title_sequence"].append(title_sequence[start_index:end_index])
+            out_dict["input_text_sequence"].append(text_sequence[start_index:end_index])
+            out_dict["input_keywords_sequence"].append(rel_keywords_sequence[start_index:end_index])
+            out_dict["immediate_next_title"].append(title_sequence[end_index])
+            out_dict["immediate_next_text"].append(text_sequence[end_index])
+            out_dict["immediate_next_rel_keywords"].append(rel_keywords_sequence[end_index])
+
+        return out_dict
 
     @staticmethod
-    def _augment_sequences(sample):
+    def _augment_sequences(batch):
 
-        all_title_sequence = sample["title_sequence"]
-        all_text_sequence = sample["text_sequence"]
-        all_keywords_sequence = sample["rel_keywords_sequence"]
-
-        assert len(all_title_sequence) >= 2, "All sequences must have at least 2 data points"
-
-        n_sequences = len(all_title_sequence)
-
-        all_seq = []
-        for i in range(1, n_sequences):
-            seq_title = all_title_sequence[0:i]
-            seq_text = all_text_sequence[0:i]
-            seq_keywords = all_keywords_sequence[0:i]
-
-            target_title = all_title_sequence[i]
-            target_text = all_text_sequence[i]
-            target_keywords = all_keywords_sequence[i]
-
-            all_seq.append(SeqTargetTuple(seq_title, target_title,
-                                          seq_text, target_text,
-                                          seq_keywords, target_keywords))
-
-        return {
-            "case_id": [sample["case_id"] for _ in range(1, n_sequences)],
-            "input_title_sequence": [el.seq_title for el in all_seq],
-            "input_text_sequence": [el.seq_text for el in all_seq],
-            "input_keywords_sequence": [el.seq_keywords for el in all_seq],
-            "immediate_next_title": [el.target_title for el in all_seq],
-            "immediate_next_text": [el.target_text for el in all_seq],
-            "immediate_next_rel_keywords": [el.target_keywords for el in all_seq]
+        out_dict = {
+            "case_id": [],
+            "input_title_sequence": [],
+            "input_text_sequence": [],
+            "input_keywords_sequence": [],
+            "immediate_next_title": [],
+            "immediate_next_text": [],
+            "immediate_next_rel_keywords": []
         }
+
+        for case_id, all_title_sequence, all_text_sequence, all_keywords_sequence in zip(batch["case_id"],
+                                                                                         batch["title_sequence"],
+                                                                                         batch["text_sequence"],
+                                                                                         batch["rel_keywords_sequence"]
+                                                                                         ):
+
+            assert len(all_title_sequence) >= 2, "All sequences must have at least 2 data points"
+
+            n_sequences = len(all_title_sequence)
+
+            all_seq = []
+            for i in range(1, n_sequences):
+                seq_title = all_title_sequence[0:i]
+                seq_text = all_text_sequence[0:i]
+                seq_keywords = all_keywords_sequence[0:i]
+
+                target_title = all_title_sequence[i]
+                target_text = all_text_sequence[i]
+                target_keywords = all_keywords_sequence[i]
+
+                all_seq.append(SeqTargetTuple(seq_title, target_title,
+                                              seq_text, target_text,
+                                              seq_keywords, target_keywords))
+
+            out_dict["case_id"].extend([case_id for _ in range(1, n_sequences)])
+            out_dict["input_title_sequence"].extend([el.seq_title for el in all_seq])
+            out_dict["input_text_sequence"].extend([el.seq_text for el in all_seq])
+            out_dict["input_keywords_sequence"].extend([el.seq_keywords for el in all_seq])
+            out_dict["immediate_next_title"].extend([el.target_title for el in all_seq])
+            out_dict["immediate_next_text"].extend([el.target_text for el in all_seq])
+            out_dict["immediate_next_rel_keywords"].extend([el.target_keywords for el in all_seq])
+
+        return out_dict
 
     def get_hf_datasets(self, merge_train_val: bool = False) -> Dict[str, datasets.Dataset]:
 

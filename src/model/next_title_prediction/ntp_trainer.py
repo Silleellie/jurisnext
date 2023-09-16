@@ -77,8 +77,15 @@ class NTPTrainer:
             self.ntp_model.train()
 
             # at the start of each iteration, we randomly sample the train sequence and tokenize it
+            # Process the data in batches of 1 row
+            # (we didn't invest time in vectorizing the sampling, so passing a higher batch size
+            # has no effect)
+            # We still use batched=True so that even if we augment data (lists are returned)
+            # each augmented data is considered as a row
             shuffled_train = train_dataset.shuffle(seed=self.random_seed)
             sampled_train = shuffled_train.map(self.train_sampling_fn,
+                                               batched=True,
+                                               batch_size=1,
                                                remove_columns=train_dataset.column_names,
                                                load_from_cache_file=False,
                                                keep_in_memory=True)
