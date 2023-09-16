@@ -24,7 +24,9 @@ class NTPEvaluator:
 
         self.ntp_model.eval()
         preprocessed_test = test_dataset.map(self.ntp_model.tokenize,
-                                             remove_columns=test_dataset.column_names)
+                                             remove_columns=test_dataset.column_names,
+                                             load_from_cache_file=False,
+                                             desc="Tokenizing test set")
         preprocessed_test.set_format("torch")
 
         total_n_batch = ceil(preprocessed_test.num_rows / self.eval_batch_size)

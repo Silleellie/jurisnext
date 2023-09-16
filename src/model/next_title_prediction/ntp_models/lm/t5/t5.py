@@ -262,7 +262,7 @@ def t5_main(exp_config: ExperimentConfig):
 
 if __name__ == "__main__":
     vars = {'model': 't5', 'checkpoint': 'google/flan-t5-small', 'exp_name': 'flan_t5_ablation_direct',
-            'pipeline_phases': ['data', 'train', 'eval'], 'epochs': 200, 'train_batch_size': 32, 'eval_batch_size': 16,
+            'pipeline_phases': ['data', 'train', 'eval'], 'epochs': 200, 'train_batch_size': 2, 'eval_batch_size': 2,
             'random_seed': 42, 'monitor_strategy': 'loss', 'use_clusters': False, 'log_wandb': False, 'n_test_set': 10,
             'ngram_label': None, 'seq_sampling_strategy': 'random', 'clean_stopwords_kwds': False,
             't5_keyword_min_occ': None,

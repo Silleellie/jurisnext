@@ -56,7 +56,9 @@ class NTPTrainer:
         self.ntp_model.eval()  # eval because the "tokenize" function select different tasks depending on the mode
         preprocessed_val = validation_dataset.map(self.ntp_model.tokenize,
                                                   remove_columns=validation_dataset.column_names,
-                                                  load_from_cache_file=False)
+                                                  load_from_cache_file=False,
+                                                  desc="Tokenizing val set"
+                                                  )
         preprocessed_val.set_format("torch")
 
         # ceil because we don't drop the last batch
@@ -88,11 +90,13 @@ class NTPTrainer:
                                                batch_size=1,
                                                remove_columns=train_dataset.column_names,
                                                load_from_cache_file=False,
-                                               keep_in_memory=True)
+                                               keep_in_memory=True,
+                                               desc="Sampling train set with chosen strategy")
             preprocessed_train = sampled_train.map(self.ntp_model.tokenize,
                                                    remove_columns=sampled_train.column_names,
                                                    load_from_cache_file=False,
-                                                   keep_in_memory=True)
+                                                   keep_in_memory=True,
+                                                   desc="Tokenizing train set")
             preprocessed_train.set_format("torch")
 
             pbar = tqdm(preprocessed_train.iter(batch_size=self.batch_size),
