@@ -197,18 +197,6 @@ if __name__ == '__main__':
             model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
             model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
 
-            if exp_config.log_wandb:
-                for file in os.listdir(model_path):
-
-                    # load various config json of the model fit as artifact
-                    path_file = Path(file)
-                    if path_file.suffix == ".json":
-                        art = wandb.Artifact(name=f"{path_file.stem}_{exp_config.model}.json",
-                                             type=f"hf_config_{exp_config.model}")
-                        art.add_file(os.path.join(model_path, file))
-
-                        wandb.log_artifact(art)
-
     # EVAL PIPELINE
     if 'eval' in exp_config.pipeline_phases:
 
