@@ -41,7 +41,6 @@ def merge_results(results_list, metric_list, task, prefix_all_metrics, prefix_av
 
 
 def eval_t5(exp_config, evaluator, test_set, metric_list, prefix):
-
     task_results = defaultdict(list)
 
     for i, test_split in enumerate(test_set):
@@ -49,20 +48,17 @@ def eval_t5(exp_config, evaluator, test_set, metric_list, prefix):
         print("*" * 80)
         print()
 
-        test_task_list = []
-
-        if 'directntp' in exp_config.t5_tasks:
-            test_task_list.append(DirectNTP())
-        if 'directntpsideinfo':
-            test_task_list.append(
-                DirectNTPSideInfo(test_split["input_keywords_sequence"],
-                                  minimum_occ_number=exp_config.t5_keyword_min_occ))
+        test_task_list = [
+            DirectNTP(),
+            DirectNTPSideInfo(test_split["input_keywords_sequence"],
+                              minimum_occ_number=exp_config.t5_keyword_min_occ)
+        ]
 
         if exp_config.use_clusters:
             test_task_list.append(ClusteredNTP())
             test_task_list.append(ClusteredNTPSideInfo())
 
-        for i, test_task in enumerate(test_task_list):
+        for j, test_task in enumerate(test_task_list):
             print(test_task)
             evaluator.ntp_model.set_test_task(test_task)
 
@@ -74,7 +70,7 @@ def eval_t5(exp_config, evaluator, test_set, metric_list, prefix):
             task_results[str(test_task)].append(result)
 
             # at last we don't want the separator
-            if i != len(test_task_list):
+            if j != len(test_task_list):
                 print("-" * 80)
 
         print()
@@ -165,7 +161,8 @@ def t5_eval_main(exp_config: ExperimentConfig):
         F1()
     ]
 
-    classification_task_results = eval_t5(exp_config, evaluator, test_set, classification_metric_list, "eval_classification")
+    classification_task_results = eval_t5(exp_config, evaluator, test_set, classification_metric_list,
+                                          "eval_classification")
 
     # SAVE RESULTS in reports/metrics
 

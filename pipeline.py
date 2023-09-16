@@ -76,10 +76,10 @@ if __name__ == '__main__':
                         metavar='10')
     parser.add_argument('-t5_t', '--t5_tasks', nargs="+", default=None,
                         choices=["directNTP", "directNTPSideInfo", "boolNTP"],
-                        help='Specify which train task to use to fine tune NTPT55. If not specified, all defined tasks '
-                             'will be used. The first task specified will be used as validation task. '
-                             'This parameter controls also which tasks are used in the eval phase, note '
-                             'that boolNTP will be ignored in this phase (as it is a support task)',
+                        help='Specify which train task to use to fine tune NTPT55. If not specified, all possible tasks'
+                             ' will be used. The first task specified will be used as validation task. '
+                             'In the eval phase, all possible tasks are evaluated (apart from BoolNTP which is a '
+                             'support task)',
                         metavar='None')
     parser.add_argument('-t5_kw_min', '--t5_keyword_min_occ', type=int, default=None,
                         help='Specify what is the min occurrences that a keyword should have in order to be picked as '
