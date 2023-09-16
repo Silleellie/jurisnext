@@ -201,8 +201,10 @@ if __name__ == '__main__':
                 for file in os.listdir(model_path):
 
                     # load various config json of the model fit as artifact
-                    if Path(file).suffix == ".json":
-                        art = wandb.Artifact(name=file, type=f"hf_config_{exp_config.model}")
+                    path_file = Path(file)
+                    if path_file.suffix == ".json":
+                        art = wandb.Artifact(name=f"{path_file.stem}_{exp_config.model}.json",
+                                             type=f"hf_config_{exp_config.model}")
                         art.add_file(os.path.join(model_path, file))
 
                         wandb.log_artifact(art)
