@@ -216,9 +216,9 @@ def t5_main(exp_config: ExperimentConfig):
 
     if 'directntp' in exp_config.t5_tasks:
         train_task_list.append(DirectNTP())
-    if 'directntpsideinfo':
+    if 'directntpsideinfo' in exp_config.t5_tasks:
         train_task_list.append(DirectNTPSideInfo(all_rel_keywords, minimum_occ_number=exp_config.t5_keyword_min_occ))
-    if 'boolntp':
+    if 'boolntp' in exp_config.t5_tasks:
         train_task_list.append(BoolNTP(all_unique_labels))
 
     test_task = train_task_list[0]
@@ -261,6 +261,13 @@ def t5_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    t5_main(ExperimentConfig(model="t5", checkpoint=None, exp_name=None,
-                             t5_tasks=["directntp", "directntpsideinfo", "boolntp"], pipeline_phases=["train"],
-                             n_test_set=2, epochs=2))
+    vars = {'model': 't5', 'checkpoint': 'google/flan-t5-small', 'exp_name': 'flan_t5_ablation_direct',
+            'pipeline_phases': ['data', 'train', 'eval'], 'epochs': 200, 'train_batch_size': 32, 'eval_batch_size': 16,
+            'random_seed': 42, 'monitor_strategy': 'loss', 'use_clusters': False, 'log_wandb': False, 'n_test_set': 10,
+            'ngram_label': None, 'seq_sampling_strategy': 'random', 'clean_stopwords_kwds': False,
+            't5_keyword_min_occ': None,
+            't5_tasks': ['directntp'], 'device': 'cuda:0'}
+
+    exp_config = ExperimentConfig(**vars)
+
+    t5_main(exp_config)
