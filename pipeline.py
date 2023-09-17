@@ -52,12 +52,12 @@ if __name__ == '__main__':
                         metavar='2')
     parser.add_argument('-seed', '--random_seed', type=int, default=42,
                         help='random seed', metavar='42')
-    parser.add_argument('-monitor', '--monitor_strategy', type=str, default='metric', const='metric', nargs='?',
+    parser.add_argument('-monitor', '--monitor_strategy', type=str, default='loss', const='loss', nargs='?',
                         choices=['loss', 'metric'],
                         help='Choose the strategy used to save the best model. If "loss", the validation loss will be '
                              'used to save the best model, if "metric", the reference metric (Accuracy weighted or '
                              'Hit) will be used to save the best model',
-                        metavar='metric')
+                        metavar='loss')
     parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?', required=True,
                         choices=['t5', 'bert', 'nli_deberta', 'fusion', 'lstm', 'cnn', 'no_finetune'],
                         help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
@@ -91,9 +91,15 @@ if __name__ == '__main__':
     parser.add_argument('-seq_sampling', '--seq_sampling_strategy', type=str, default="random",
                         choices=['random', 'augment'],
                         help='Specify how sampling is performed on the dataset. "random" will consider randomly '
-                             'picked sequences (starting always from the first element), "augment" will consider all '
-                             'possible incremental sequences',
+                             'picked sequences, "augment" will consider all possible incremental sequences',
                         metavar='random')
+    parser.add_argument('-seq_sampling_start', '--seq_sampling_start_strategy', type=str, default="beginning",
+                        choices=['beginning', 'random'],
+                        help='Specify how the sampled sequence should start. This parameter is ignored if '
+                             '--seq_sampling_strategy is set to "augment". "beginning" will sample the sequence '
+                             'starting always from the first element, "random" will sample also the starting point '
+                             'of the sampled sequence',
+                        metavar='beginning')
     parser.add_argument('-clean_kdws', '--clean_stopwords_kwds', action=argparse.BooleanOptionalAction, default=False,
                         help='Specify whether to remove stopwords from the keywords column of the dataset or not')
     parser.add_argument('-d', '--device', type=str, default="cuda:0",
@@ -159,6 +165,7 @@ if __name__ == '__main__':
                     "random_seed": exp_config.random_seed,
                     "ngram_label": exp_config.ngram_label,
                     "seq_sampling_strategy": exp_config.seq_sampling_strategy,
+                    "seq_sampling_start_strategy": exp_config.seq_sampling_start_strategy,
                     "clean_stopwords_kwds": exp_config.clean_stopwords_kwds,
 
                     # these are hardcoded

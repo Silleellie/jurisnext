@@ -123,10 +123,12 @@ class LegalDataset:
     def __init__(self,
                  n_test_set: int,
                  random_seed: int,
-                 sampling_strategy: Literal['random', 'augment'] = "random"):
+                 sampling_strategy: Literal['random', 'augment'] = "random",
+                 start_sampling_strategy: Literal['beginning', 'random'] = "beginning"):
 
         self.random_seed = random_seed
         self.sampling_strategy = sampling_strategy
+        self.start_sampling_strategy = start_sampling_strategy
         self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_set)
 
     @cached_property
@@ -237,8 +239,7 @@ class LegalDataset:
         else:
             return self._augment_sequences(batch)
 
-    @staticmethod
-    def _sample_sequences(batch):
+    def _sample_sequences(self, batch):
 
         out_dict = {
             "case_id": [],
@@ -259,10 +260,10 @@ class LegalDataset:
             # in the "sliding_training_size" is included the target item
             sliding_size = random.randint(1, len(title_sequence) - 1)
 
-            # TO DO: consider starting always from the initial paragraph,
-            # rather than varying the starting point of the seq
-            # start_index = random.randint(0, len(batch["text_sequence"]) - sliding_size - 1)
             start_index = 0
+            if self.start_sampling_strategy == "random":
+                start_index = random.randint(0, len(title_sequence) - sliding_size - 1)
+
             end_index = start_index + sliding_size
 
             out_dict["case_id"].append(case_id)
@@ -374,6 +375,7 @@ class LegalDataset:
 
         obj.random_seed = exp_config.random_seed
         obj.sampling_strategy = exp_config.seq_sampling_strategy
+        obj.start_sampling_strategy = exp_config.seq_sampling_start_strategy
 
         return obj
 
@@ -450,7 +452,8 @@ def data_main(exp_config: ExperimentConfig):
     # the constructor will create and dump the splits
     ds = LegalDataset(n_test_set=exp_config.n_test_set,
                       random_seed=exp_config.random_seed,
-                      sampling_strategy=exp_config.seq_sampling_strategy)
+                      sampling_strategy=exp_config.seq_sampling_strategy,
+                      start_sampling_strategy=exp_config.seq_sampling_start_strategy)
 
     # create directory where all the distributions will be saved
     os.makedirs(os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name), exist_ok=True)
@@ -511,4 +514,4 @@ def data_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    data_main(ExperimentConfig("we", "we", "we", seq_sampling_strategy="random"))
+    data_main(ExperimentConfig("we", "we", "we", seq_sampling_strategy="random", seq_sampling_start_strategy="random"))
