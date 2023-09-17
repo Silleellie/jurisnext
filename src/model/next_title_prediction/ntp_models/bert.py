@@ -6,8 +6,10 @@ from transformers import BertForSequenceClassification, BertConfig
 
 from src import ExperimentConfig
 from src.data.legal_dataset import LegalDataset
-from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig
+from src.model.clustering import ClusterLabelMapper, KMeansAlg
+from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig, NTPModel
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
+from src.model.sentence_encoders import SentenceTransformerEncoder
 
 
 class NTPBertConfig(BertConfig, NTPConfig):
@@ -27,10 +29,14 @@ class NTPBert(NTPModelHF):
 
     def __init__(self,
                  pretrained_model_or_pth: str = default_checkpoint,
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 prediction_supporter: NTPModel = None,
                  **config_kwargs):
 
         super().__init__(
             pretrained_model_or_pth=pretrained_model_or_pth,
+            cluster_label_mapper=cluster_label_mapper,
+            prediction_supporter=prediction_supporter,
             **config_kwargs
         )
 
@@ -39,8 +45,40 @@ class NTPBert(NTPModelHF):
 
     def tokenize(self, sample):
 
-        output = self.tokenizer(', '.join(sample["input_title_sequence"]), truncation=True)
-        labels = [self.config.label2id[sample["immediate_next_title"]]]
+        next_title = sample["immediate_next_title"]
+
+        if self.prediction_supporter is not None:
+            tokenized_sample = self.prediction_supporter.tokenize(sample)
+
+            tokenized_sample["input_ids"] = torch.LongTensor([tokenized_sample["input_ids"]]).to(
+                self.prediction_supporter.model.device)
+            tokenized_sample["token_type_ids"] = torch.LongTensor([tokenized_sample["token_type_ids"]]).to(
+                self.prediction_supporter.model.device)
+            tokenized_sample["attention_mask"] = torch.LongTensor([tokenized_sample["attention_mask"]]).to(
+                self.prediction_supporter.model.device)
+            tokenized_sample["labels"] = torch.LongTensor(tokenized_sample["labels"]).to(
+                self.prediction_supporter.model.device).flatten()
+
+            with torch.no_grad():
+                output_supp = self.prediction_supporter.model(**tokenized_sample)
+
+            predicted_cluster = output_supp.logits.argmax(dim=1).item()
+            predicted_cluster_str = ClusterLabelMapper.template_label.format(str(predicted_cluster))
+
+            output = self.tokenizer(', '.join(sample["input_title_sequence"]) +
+                                    f"\n Next immediate cluster: {predicted_cluster_str}",
+                                    truncation=True)
+
+        else:
+
+            output = self.tokenizer(', '.join(sample["input_title_sequence"]), truncation=True)
+
+        if self.cluster_label_mapper is not None:
+            next_title = ClusterLabelMapper.template_label.format(
+                str(self.cluster_label_mapper.predict(sample["immediate_next_title"]))
+            )
+
+        labels = [self.config.label2id[next_title]]
 
         return {'input_ids': output['input_ids'],
                 'token_type_ids': output['token_type_ids'],
@@ -101,13 +139,37 @@ def bert_main(exp_config: ExperimentConfig):
     train = dataset["train"]
     val = dataset["validation"]
 
+    if exp_config.k_clusters is None:
+
+        labels_to_predict = all_unique_labels
+        cluster_label = None
+
+    else:
+
+        labels_to_predict = [ClusterLabelMapper.template_label.format(str(i))
+                             for i in range(0, exp_config.k_clusters)]
+
+        clus_alg = KMeansAlg(
+            n_clusters=exp_config.k_clusters,
+            random_state=exp_config.random_seed,
+            init="k-means++",
+            n_init="auto"
+        )
+
+        sent_encoder = SentenceTransformerEncoder(
+            device=device,
+        )
+
+        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
     ntp_model = NTPBert(
         checkpoint,
+        cluster_label_mapper=cluster_label,
 
         problem_type="single_label_classification",
-        num_labels=len(all_unique_labels),
-        label2id={x: i for i, x in enumerate(all_unique_labels)},
-        id2label={i: x for i, x in enumerate(all_unique_labels)},
+        num_labels=len(labels_to_predict),
+        label2id={x: i for i, x in enumerate(labels_to_predict)},
+        id2label={i: x for i, x in enumerate(labels_to_predict)},
 
         device=device
     )
