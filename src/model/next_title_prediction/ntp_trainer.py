@@ -61,9 +61,6 @@ class NTPTrainer:
                                                   )
         preprocessed_val.set_format("torch")
 
-        # ceil because we don't drop the last batch
-        total_n_batch = ceil(train_dataset.num_rows / self.batch_size)
-
         # depending on the monitor strategy, we want either this to decrease or to increase,
         # so we have a different initialization
         best_val_monitor_result = np.inf if self.monitor_strategy == "loss" else 0
@@ -98,6 +95,10 @@ class NTPTrainer:
                                                    keep_in_memory=True,
                                                    desc="Tokenizing train set")
             preprocessed_train.set_format("torch")
+
+            # ceil because we don't drop the last batch. It's here since if we are in
+            # augment strategy, row number increases after preprocessing
+            total_n_batch = ceil(preprocessed_train.num_rows / self.batch_size)
 
             pbar = tqdm(preprocessed_train.iter(batch_size=self.batch_size),
                         total=total_n_batch)
