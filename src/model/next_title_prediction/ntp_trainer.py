@@ -51,6 +51,17 @@ class NTPTrainer:
 
     def train(self, train_dataset: datasets.Dataset, validation_dataset: datasets.Dataset = None):
 
+        if self.ntp_model.cluster_label_mapper is not None:
+            # retrieve all unique labels which appear in train set
+            flat_train_labels = itertools.chain.from_iterable(train_dataset["title_sequence"])
+            unique_train_labels = np.unique(np.fromiter(flat_train_labels, dtype=object)).astype(str)
+            self.ntp_model.cluster_label_mapper.fit(unique_train_labels, self.all_labels)
+
+            if self.log_wandb:
+                wandb.config.update({
+                    "clusters": self.ntp_model.cluster_label_mapper.get_parameters()
+                })
+
         # validation set remains the same and should NOT be sampled at each epoch, otherwise
         # results are not comparable
         self.ntp_model.eval()  # eval because the "tokenize" function select different tasks depending on the mode
