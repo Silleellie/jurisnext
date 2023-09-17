@@ -69,6 +69,10 @@ if __name__ == '__main__':
     parser.add_argument('-ck', '--checkpoint', type=str, default=None,
                         help='Add checkpoint to use for train (e.g. google/flan-t5-small with t5 model)',
                         metavar='None')
+    parser.add_argument('-k_c', '--k_clusters', type=int, default=None,
+                        help='If specified, it sets the number of clustered labels that will be considered '
+                             'as next possible titles instead of the original labels',
+                        metavar='None')
     parser.add_argument('--log_wandb', action=argparse.BooleanOptionalAction, default=False,
                         help='Log pipeline information regarding data, train and eval on wandb')
     parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
