@@ -77,6 +77,8 @@ class KMedoidsAlg(ClusterAlg):
 
 class ClusterLabelMapper:
 
+    template_label = "GROUP {}"
+
     def __init__(self, sentence_encoder: SentenceEncoder, cluster_alg: ClusterAlg):
         self.sentence_encoder = sentence_encoder
         self.clustering_alg = cluster_alg
@@ -120,6 +122,10 @@ class ClusterLabelMapper:
         bool_mask = np.where(self.cluster_arr == clusters)
 
         return self.labels_arr[bool_mask]
+
+    def predict(self, label: str):
+        encoded_labels = self.sentence_encoder.encode_batch([label]).cpu().numpy()
+        return self.clustering_alg.predict(encoded_labels).item()
 
     def get_parameters(self) -> dict:
         return {
