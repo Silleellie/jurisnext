@@ -27,7 +27,7 @@ class ExperimentConfig:
     eval_batch_size: int = 2
     random_seed: int = 42
     monitor_strategy: Literal['loss', 'metric'] = 'metric'
-    use_clusters: bool = False
+    k_clusters: Optional[int] = None
     log_wandb: bool = False
     n_test_set: int = 10
     ngram_label: Optional[int] = None
