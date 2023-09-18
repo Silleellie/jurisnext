@@ -1,7 +1,6 @@
 import argparse
 import dataclasses
 import os
-from pathlib import Path
 
 import wandb
 
