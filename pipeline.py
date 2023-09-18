@@ -100,6 +100,14 @@ if __name__ == '__main__':
                              'starting always from the first element, "random" will sample also the starting point '
                              'of the sampled sequence',
                         metavar='beginning')
+    parser.add_argument('-test_seq_sampling', '--test_seq_sampling_strategy', type=str, default=None,
+                        choices=['random', 'augment'],
+                        help='Specify how sampling is performed on the test set. "random" will consider randomly '
+                             'picked sequences, "augment" will consider all possible incremental sequences. '
+                             'If not set, the sampling strategy of train/val will be used. If this parameter is '
+                             'set to "augment" and --n_test_set > 1, a warning is printed and n_test_set is forced '
+                             'to 1',
+                        metavar='None')
     parser.add_argument('-clean_kdws', '--clean_stopwords_kwds', action=argparse.BooleanOptionalAction, default=False,
                         help='Specify whether to remove stopwords from the keywords column of the dataset or not')
     parser.add_argument('-d', '--device', type=str, default="cuda:0",
@@ -166,6 +174,7 @@ if __name__ == '__main__':
                     "ngram_label": exp_config.ngram_label,
                     "seq_sampling_strategy": exp_config.seq_sampling_strategy,
                     "seq_sampling_start_strategy": exp_config.seq_sampling_start_strategy,
+                    "test_seq_sampling_strategy": exp_config.test_seq_sampling_strategy,
                     "clean_stopwords_kwds": exp_config.clean_stopwords_kwds,
 
                     # these are hardcoded

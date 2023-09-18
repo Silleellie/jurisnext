@@ -124,11 +124,24 @@ class LegalDataset:
                  n_test_set: int,
                  random_seed: int,
                  sampling_strategy: Literal['random', 'augment'] = "random",
-                 start_sampling_strategy: Literal['beginning', 'random'] = "beginning"):
+                 start_sampling_strategy: Literal['beginning', 'random'] = "beginning",
+                 test_sampling_strategy: Literal['random', 'augment'] = None):
+
+        if test_sampling_strategy is None:
+            print("Sampling strategy not defined for the test set, same of the training/validation set will be used: "
+                  f"{sampling_strategy}")
+            test_sampling_strategy = sampling_strategy
+
+        if n_test_set > 1 and test_sampling_strategy == "augment":
+            print(f"WARNING: set n_test_set to a number greater than 1 (n_test_set == {n_test_set}) but "
+                  f"test_sampling_strategy is 'augment'. With this sampling strategy, n_test_set is forced to 1")
+            n_test_set = 1
 
         self.random_seed = random_seed
         self.sampling_strategy = sampling_strategy
         self.start_sampling_strategy = start_sampling_strategy
+        self.test_sampling_strategy = test_sampling_strategy
+        print(n_test_set)
         self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_set)
 
     @cached_property
@@ -168,7 +181,7 @@ class LegalDataset:
 
         train_dataset = self._group_dataset(train_dataset, to_sample=False)
         val_dataset = self._group_dataset(val_dataset, to_sample=True)
-        test_dataset = [self._group_dataset(test_dataset, to_sample=True) for _ in range(n_test_set)]
+        test_dataset = [self._group_dataset(test_dataset, to_sample=True, test_mode=True) for _ in range(n_test_set)]
 
         train_dataset.to_pickle(self.train_path)
         val_dataset.to_pickle(self.val_path)
@@ -202,7 +215,7 @@ class LegalDataset:
 
         return train_set, val_set, test_set
 
-    def _group_dataset(self, dataset_split, to_sample: bool = False):
+    def _group_dataset(self, dataset_split, to_sample: bool = False, test_mode: bool = False):
 
         grouped_split = dataset_split.groupby("case_id")[['title', 'text', 'rel_keywords']].agg(list)
 
@@ -226,15 +239,18 @@ class LegalDataset:
             for i in range(0, len(list_of_dicts), batch_size):
                 # merge_with to uniform input of perform_sampling fn to that of hugging face map function
                 batch_dict = merge_with(list, *list_of_dicts[i:i + batch_size])
-                mapped_results.append(self.perform_sampling(batch_dict))
+                mapped_results.append(self.perform_sampling(batch_dict, test_mode))
 
             grouped_split = pd.DataFrame.from_records(mapped_results)
             grouped_split = grouped_split.explode(column=grouped_split.columns.tolist())
 
         return grouped_split
 
-    def perform_sampling(self, batch):
-        if self.sampling_strategy == "random":
+    def perform_sampling(self, batch, test_mode: bool = False):
+
+        sample_strategy_to_check = self.test_sampling_strategy if test_mode is True else self.sampling_strategy
+
+        if sample_strategy_to_check == "random":
             return self._sample_sequences(batch)
         else:
             return self._augment_sequences(batch)
@@ -453,7 +469,8 @@ def data_main(exp_config: ExperimentConfig):
     ds = LegalDataset(n_test_set=exp_config.n_test_set,
                       random_seed=exp_config.random_seed,
                       sampling_strategy=exp_config.seq_sampling_strategy,
-                      start_sampling_strategy=exp_config.seq_sampling_start_strategy)
+                      start_sampling_strategy=exp_config.seq_sampling_start_strategy,
+                      test_sampling_strategy=exp_config.test_seq_sampling_strategy)
 
     # create directory where all the distributions will be saved
     os.makedirs(os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name), exist_ok=True)

@@ -33,6 +33,7 @@ class ExperimentConfig:
     ngram_label: Optional[int] = None
     seq_sampling_strategy: Literal['random', 'augment'] = "random"
     seq_sampling_start_strategy: Literal['beginning', 'random'] = "beginning"
+    test_seq_sampling_strategy: Literal['random', 'augment'] = None
     clean_stopwords_kwds: bool = False
     t5_keyword_min_occ: Optional[int] = None
     t5_tasks: List[str] = None
