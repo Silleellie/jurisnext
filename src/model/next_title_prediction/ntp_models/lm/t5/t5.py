@@ -214,15 +214,32 @@ def t5_main(exp_config: ExperimentConfig):
 
     train_task_list = []
 
+    if exp_config.t5_tasks == ['boolntp']:
+        raise ValueError("Please insert one other task other than only boolNTP! boolNTP it's only a support task "
+                         "and does not compute useful predictions for the ntp task")
+
+    test_task = None
     if 'directntp' in exp_config.t5_tasks:
-        train_task_list.append(DirectNTP())
+        task = DirectNTP()
+        train_task_list.append(task)
+
+        if exp_config.t5_tasks[0] == "directntp":
+            test_task = task
     if 'directntpsideinfo' in exp_config.t5_tasks:
-        train_task_list.append(DirectNTPSideInfo(all_rel_keywords, minimum_occ_number=exp_config.t5_keyword_min_occ))
+        task = DirectNTPSideInfo(all_rel_keywords, minimum_occ_number=exp_config.t5_keyword_min_occ)
+        train_task_list.append(task)
+
+        if exp_config.t5_tasks[0] == "directntpsideinfo":
+            test_task = task
     if 'boolntp' in exp_config.t5_tasks:
         train_task_list.append(BoolNTP(all_unique_labels))
 
-    test_task = train_task_list[0]
+    if test_task is None:
+        print(f"boolNTP set as first task of the --t5_tasks parameter, it is ignored. {train_task_list[0]} will be "
+              f"used instead as validation task!")
+        test_task = train_task_list[0]
 
+    print(test_task)
     sent_encoder = SentenceTransformerEncoder(
         device=device,
     )
