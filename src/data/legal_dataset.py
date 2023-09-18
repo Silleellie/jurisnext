@@ -141,7 +141,6 @@ class LegalDataset:
         self.sampling_strategy = sampling_strategy
         self.start_sampling_strategy = start_sampling_strategy
         self.test_sampling_strategy = test_sampling_strategy
-        print(n_test_set)
         self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_set)
 
     @cached_property
