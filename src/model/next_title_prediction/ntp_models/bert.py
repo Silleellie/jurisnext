@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
+
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertForSequenceClassification, BertConfig
 
-from src import ExperimentConfig
+from src import ExperimentConfig, MODELS_DIR
 from src.data.legal_dataset import LegalDataset
 from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig, NTPModel
@@ -139,40 +141,59 @@ def bert_main(exp_config: ExperimentConfig):
     train = dataset["train"]
     val = dataset["validation"]
 
-    if exp_config.k_clusters is None:
+    if exp_config.prediction_supporter is None:
 
-        labels_to_predict = all_unique_labels
-        cluster_label = None
+        if exp_config.k_clusters is None:
+
+            labels_to_predict = all_unique_labels
+            cluster_label = None
+
+        else:
+
+            labels_to_predict = [ClusterLabelMapper.template_label.format(str(i))
+                                 for i in range(0, exp_config.k_clusters)]
+
+            clus_alg = KMeansAlg(
+                n_clusters=exp_config.k_clusters,
+                random_state=exp_config.random_seed,
+                init="k-means++",
+                n_init="auto"
+            )
+
+            sent_encoder = SentenceTransformerEncoder(
+                device=device,
+            )
+
+            cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
+        ntp_model = NTPBert(
+            checkpoint,
+            cluster_label_mapper=cluster_label,
+
+            problem_type="single_label_classification",
+            num_labels=len(labels_to_predict),
+            label2id={x: i for i, x in enumerate(labels_to_predict)},
+            id2label={i: x for i, x in enumerate(labels_to_predict)},
+
+            device=device
+        )
 
     else:
 
-        labels_to_predict = [ClusterLabelMapper.template_label.format(str(i))
-                             for i in range(0, exp_config.k_clusters)]
+        labels_to_predict = all_unique_labels
+        pred_sup = NTPBert.load(os.path.join(MODELS_DIR, exp_config.prediction_supporter))
 
-        clus_alg = KMeansAlg(
-            n_clusters=exp_config.k_clusters,
-            random_state=exp_config.random_seed,
-            init="k-means++",
-            n_init="auto"
+        ntp_model = NTPBert(
+            checkpoint,
+            prediction_supporter=pred_sup,
+
+            problem_type="single_label_classification",
+            num_labels=len(labels_to_predict),
+            label2id={x: i for i, x in enumerate(labels_to_predict)},
+            id2label={i: x for i, x in enumerate(labels_to_predict)},
+
+            device=device
         )
-
-        sent_encoder = SentenceTransformerEncoder(
-            device=device,
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
-
-    ntp_model = NTPBert(
-        checkpoint,
-        cluster_label_mapper=cluster_label,
-
-        problem_type="single_label_classification",
-        num_labels=len(labels_to_predict),
-        label2id={x: i for i, x in enumerate(labels_to_predict)},
-        id2label={i: x for i, x in enumerate(labels_to_predict)},
-
-        device=device
-    )
 
     trainer = NTPTrainer(
         ntp_model=ntp_model,

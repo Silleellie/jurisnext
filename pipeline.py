@@ -1,7 +1,6 @@
 import argparse
 import dataclasses
 import os
-from pathlib import Path
 
 import wandb
 
@@ -78,6 +77,10 @@ if __name__ == '__main__':
     parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
                         help='Specify the number of test set to sample for evaluating the model trained',
                         metavar='10')
+    parser.add_argument('-p_s', '--prediction_supporter', type=str, default=None,
+                        help='Specify the name of the folder in the models directory containing the model to use as '
+                             'prediction supporter',
+                        metavar='None')
     parser.add_argument('-t5_t', '--t5_tasks', nargs="+", default=None,
                         choices=["directNTP", "directNTPSideInfo", "boolNTP"],
                         help='Specify which train task to use to fine tune NTPT55. If not specified, all possible tasks'
