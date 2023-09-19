@@ -64,7 +64,7 @@ class NTPBert(NTPModelHF):
             with torch.no_grad():
                 output_supp = self.prediction_supporter.model(**tokenized_sample)
 
-            predicted_cluster = output_supp.logits.argmax(dim=1).item()
+            predicted_cluster = output_supp.logits.argmax(dim=1).cpu().item()
             predicted_cluster_str = ClusterLabelMapper.template_label.format(str(predicted_cluster))
 
             output = self.tokenizer(', '.join(sample["input_title_sequence"]) +
@@ -182,6 +182,8 @@ def bert_main(exp_config: ExperimentConfig):
 
         labels_to_predict = all_unique_labels
         pred_sup = NTPBert.load(os.path.join(MODELS_DIR, exp_config.prediction_supporter))
+
+        pred_sup.model.to(device)
 
         ntp_model = NTPBert(
             checkpoint,
