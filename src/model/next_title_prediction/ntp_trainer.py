@@ -118,8 +118,7 @@ class NTPTrainer:
                 train_loss += loss.item()
 
                 # we update the loss every 1% progress considering the total n° of batches
-                # cast to int to avoid floating point errors
-                if (int(i % (total_n_batch / 100))) == 0:
+                if (i % ceil(total_n_batch / 100)) == 0 or i == total_n_batch:
                     pbar.set_description(f"Epoch {epoch + 1}, Loss -> {(train_loss / i):.6f}")
 
                     if self.log_wandb:
@@ -195,8 +194,7 @@ class NTPTrainer:
             total_truths.extend(truths)
 
             # we update the loss every 1% progress considering the total n° of batches
-            # cast to int to avoid floating point errors
-            if (int(i % (total_n_batch / 100))) == 0:
+            if (i % ceil(total_n_batch / 100)) == 0 or i == total_n_batch:
                 preds_so_far = np.array(total_preds)
                 truths_so_far = np.array(total_truths)
 
