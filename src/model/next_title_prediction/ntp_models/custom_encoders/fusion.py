@@ -264,7 +264,7 @@ def fusion_main(exp_config: ExperimentConfig):
         model=model,
     )
 
-    output_name = f"MultimodalFusion_{n_epochs}"
+    output_name = f"CNN_LSTM_{n_epochs}"
     if exp_config.exp_name is not None:
         output_name = exp_config.exp_name
 
