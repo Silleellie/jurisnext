@@ -1,6 +1,7 @@
 from typing import Dict, Union, List
 
 import torch
+from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedModel, PretrainedConfig
 
 from src import ExperimentConfig
@@ -15,7 +16,6 @@ class LSTMConfig(PretrainedConfig, NTPConfig):
     def __init__(
             self,
             lstm_encoder_params: dict = None,
-            max_seq_len: int = 100,
             device: str = 'cpu',
             **kwargs
     ):
@@ -24,7 +24,6 @@ class LSTMConfig(PretrainedConfig, NTPConfig):
         NTPConfig.__init__(self, device)
 
         self.lstm_encoder_params = lstm_encoder_params
-        self.max_seq_len = max_seq_len
 
 
 class LSTMModel(PreTrainedModel):
@@ -37,7 +36,7 @@ class LSTMModel(PreTrainedModel):
 
         self.output_dim = self.lstm_encoder.expected_output_size
         self.parameters_to_update = []
-        self.parameters_to_update.extend(self.lstm_encoder.parameters())
+        self.parameters_to_update.extend(filter(lambda p: p.requires_grad, self.lstm_encoder.parameters()))
 
     def forward(self, x: Dict[str, Union[torch.Tensor, List[str]]]) -> torch.Tensor:
         lstm_output = self.lstm_encoder(x)
@@ -89,13 +88,11 @@ class NTPLSTMModel(NTPModel):
 
         input_dict = {}
 
-        tokenizer_output = self.tokenizer(', '.join(sample['input_title_sequence']),
-                                          return_tensors="pt", padding="max_length",
-                                          max_length=self.config.max_seq_len, truncation=True)
+        tokenizer_output = self.tokenizer(', '.join(sample['input_title_sequence']), truncation=True)
 
-        input_dict["input_ids"] = tokenizer_output["input_ids"].squeeze()
-        input_dict["token_type_ids"] = tokenizer_output["token_type_ids"].squeeze()
-        input_dict["attention_mask"] = tokenizer_output["attention_mask"].squeeze()
+        input_dict["input_ids"] = tokenizer_output["input_ids"]
+        input_dict["token_type_ids"] = tokenizer_output["token_type_ids"]
+        input_dict["attention_mask"] = tokenizer_output["attention_mask"]
 
         input_dict['labels'] = [self.config.label2id[sample['immediate_next_title']]]
 
@@ -104,9 +101,13 @@ class NTPLSTMModel(NTPModel):
     def prepare_input(self, batch):
         input_dict = {"text": {}}
 
-        input_dict["text"]["input_ids"] = batch["input_ids"].to(self.model.device)
-        input_dict["text"]["token_type_ids"] = batch["token_type_ids"].to(self.model.device)
-        input_dict["text"]["attention_mask"] = batch["attention_mask"].to(self.model.device)
+        input_ids = pad_sequence(batch["input_ids"], batch_first=True, padding_value=self.tokenizer.pad_token_id)
+        token_type_ids = pad_sequence(batch["token_type_ids"], batch_first=True, padding_value=self.tokenizer.pad_token_id)
+        attention_mask = pad_sequence(batch["attention_mask"], batch_first=True, padding_value=self.tokenizer.pad_token_id)
+
+        input_dict["text"]["input_ids"] = input_ids.to(self.model.device)
+        input_dict["text"]["token_type_ids"] = token_type_ids.to(self.model.device)
+        input_dict["text"]["attention_mask"] = attention_mask.to(self.model.device)
 
         if "labels" in batch:
             input_dict["labels"] = batch["labels"].to(self.model.device).flatten()
@@ -145,6 +146,8 @@ class NTPLSTMModel(NTPModel):
 
 
 def lstm_model_main(exp_config: ExperimentConfig):
+
+    freeze_emb_model = exp_config.freeze_emb_model
     n_epochs = exp_config.epochs
     batch_size = exp_config.train_batch_size
     eval_batch_size = exp_config.eval_batch_size
@@ -164,11 +167,11 @@ def lstm_model_main(exp_config: ExperimentConfig):
             lstm_encoder_params={
                 "model_name": "bert-base-uncased",
                 "model_hidden_states_num": 4,
-                "directions_fusion_strat": "mean"
+                "directions_fusion_strat": "concat",
+                "freeze_embedding_model": freeze_emb_model
             },
             label2id={x: i for i, x in enumerate(all_unique_labels)},
             id2label={i: x for i, x in enumerate(all_unique_labels)},
-            max_seq_len=100,
             device=device
         ),
     )

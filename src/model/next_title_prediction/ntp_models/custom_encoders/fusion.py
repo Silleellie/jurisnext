@@ -186,12 +186,9 @@ class NTPMultimodalFusion(NTPModel):
 
         input_dict["text"] = {}
 
-        input_dict["text"]["input_ids"] = pad_sequence(batch["input_ids"], batch_first=True,
-                                                       padding_value=self.tokenizer.pad_token_id).to(self.model.device)
-        input_dict["text"]["token_type_ids"] = pad_sequence(batch["token_type_ids"], batch_first=True,
-                                                            padding_value=self.tokenizer.pad_token_id).to(self.model.device)
-        input_dict["text"]["attention_mask"] = pad_sequence(batch["attention_mask"], batch_first=True,
-                                                            padding_value=self.tokenizer.pad_token_id).to(self.model.device)
+        input_dict["text"]["input_ids"] = pad_sequence(batch["input_ids"], batch_first=True, padding_value=self.tokenizer.pad_token_id).to(self.model.device)
+        input_dict["text"]["token_type_ids"] = pad_sequence(batch["token_type_ids"], batch_first=True, padding_value=self.tokenizer.pad_token_id).to(self.model.device)
+        input_dict["text"]["attention_mask"] = pad_sequence(batch["attention_mask"], batch_first=True, padding_value=self.tokenizer.pad_token_id).to(self.model.device)
 
         if "labels" in batch:
             input_dict["labels"] = batch["labels"].to(self.model.device).flatten()
@@ -229,6 +226,7 @@ class NTPMultimodalFusion(NTPModel):
 
 def fusion_main(exp_config: ExperimentConfig):
 
+    freeze_emb_model = exp_config.freeze_emb_model
     n_epochs = exp_config.epochs
     batch_size = exp_config.train_batch_size
     eval_batch_size = exp_config.eval_batch_size
@@ -247,12 +245,13 @@ def fusion_main(exp_config: ExperimentConfig):
             cnn_encoder_params={
                 "input_dims": [1, 32, 64, 128, 64, 10],
                 "output_dims": [32, 64, 128, 64, 10, 5],
-                "kernel_sizes": [7, 5, 5, 5, 5, 1]
+                "kernel_sizes": [7, 5, 5, 5, 5, 1],
             },
             lstm_encoder_params={
-                "model_name": "nlpaueb/legal-bert-base-uncased",
+                "model_name": "bert-base-uncased",
                 "model_hidden_states_num": 4,
-                "directions_fusion_strat": "mean"
+                "directions_fusion_strat": "concat",
+                "freeze_embedding_model": freeze_emb_model
             },
             max_seq_len=100,
             label2id={x: i for i, x in enumerate(all_unique_labels)},
