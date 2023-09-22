@@ -28,6 +28,7 @@ class ExperimentConfig:
     random_seed: int = 42
     monitor_strategy: Literal['loss', 'metric'] = 'metric'
     use_clusters: bool = False
+    freeze_emb_model: bool = False
     log_wandb: bool = False
     n_test_set: int = 10
     ngram_label: Optional[int] = None

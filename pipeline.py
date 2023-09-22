@@ -109,6 +109,8 @@ if __name__ == '__main__':
                         metavar='None')
     parser.add_argument('-clean_kdws', '--clean_stopwords_kwds', action=argparse.BooleanOptionalAction, default=False,
                         help='Specify whether to remove stopwords from the keywords column of the dataset or not')
+    parser.add_argument('-f_e_m', '--freeze_emb_model', action=argparse.BooleanOptionalAction, default=False,
+                        help='Used by LSTM encoder, define if the model used for embeddings should be frozen during train or not')
     parser.add_argument('-d', '--device', type=str, default="cuda:0",
                         help='Specify the device which should be used during the experiment',
                         metavar='cuda:0')
