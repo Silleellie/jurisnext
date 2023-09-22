@@ -135,7 +135,7 @@ def t5_eval_main(exp_config: ExperimentConfig):
 
     ranking_metric_list = [
         Hit(k=10),
-        Hit(k=10),
+        MAP(k=10),
         MRR(k=10),
         Hit(k=5),
         MAP(k=5),
