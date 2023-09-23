@@ -11,7 +11,7 @@ import wandb
 from src import ExperimentConfig
 
 
-def seed_everything(seed: int):
+def seed_everything(seed: int, print_seed: bool = True):
     """
     Function which fixes the random state of each library used by this repository with the seed
     specified when invoking `pipeline.py`
@@ -31,7 +31,9 @@ def seed_everything(seed: int):
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-    print(f"Random seed set as {seed}")
+
+    if print_seed:
+        print(f"Random seed set as {seed}")
 
     return seed
 
