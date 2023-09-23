@@ -230,7 +230,8 @@ def nli_deberta_main(exp_config: ExperimentConfig):
         eval_batch_size=eval_batch_size,
         output_name=exp_config.exp_name,
         log_wandb=exp_config.log_wandb,
-        train_sampling_fn=sampling_fn
+        train_sampling_fn=sampling_fn,
+        monitor_strategy=exp_config.monitor_strategy
     )
 
     trainer.train(train, val)

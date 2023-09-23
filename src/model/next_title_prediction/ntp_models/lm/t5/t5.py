@@ -214,15 +214,32 @@ def t5_main(exp_config: ExperimentConfig):
 
     train_task_list = []
 
+    if exp_config.t5_tasks == ['boolntp']:
+        raise ValueError("Please insert one other task other than only boolNTP! boolNTP it's only a support task "
+                         "and does not compute useful predictions for the ntp task")
+
+    test_task = None
     if 'directntp' in exp_config.t5_tasks:
-        train_task_list.append(DirectNTP())
-    if 'directntpsideinfo':
-        train_task_list.append(DirectNTPSideInfo(all_rel_keywords, minimum_occ_number=exp_config.t5_keyword_min_occ))
-    if 'boolntp':
+        task = DirectNTP()
+        train_task_list.append(task)
+
+        if exp_config.t5_tasks[0] == "directntp":
+            test_task = task
+    if 'directntpsideinfo' in exp_config.t5_tasks:
+        task = DirectNTPSideInfo(all_rel_keywords, minimum_occ_number=exp_config.t5_keyword_min_occ)
+        train_task_list.append(task)
+
+        if exp_config.t5_tasks[0] == "directntpsideinfo":
+            test_task = task
+    if 'boolntp' in exp_config.t5_tasks:
         train_task_list.append(BoolNTP(all_unique_labels))
 
-    test_task = train_task_list[0]
+    if test_task is None:
+        print(f"boolNTP set as first task of the --t5_tasks parameter, it is ignored. {train_task_list[0]} will be "
+              f"used instead as validation task!")
+        test_task = train_task_list[0]
 
+    print(test_task)
     sent_encoder = SentenceTransformerEncoder(
         device=device,
     )
@@ -252,6 +269,7 @@ def t5_main(exp_config: ExperimentConfig):
         log_wandb=exp_config.log_wandb,
         random_seed=exp_config.random_seed,
         train_sampling_fn=sampling_fn,
+        monitor_strategy=exp_config.monitor_strategy
     )
 
     trainer.train(train, val)
@@ -260,6 +278,13 @@ def t5_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    t5_main(ExperimentConfig(model="t5", checkpoint=None, exp_name=None,
-                             t5_tasks=["directntp", "directntpsideinfo", "boolntp"], pipeline_phases=["train"],
-                             n_test_set=2, epochs=2))
+    vars = {'model': 't5', 'checkpoint': 'google/flan-t5-small', 'exp_name': 'flan_t5_ablation_direct',
+            'pipeline_phases': ['data', 'train', 'eval'], 'epochs': 200, 'train_batch_size': 2, 'eval_batch_size': 2,
+            'random_seed': 42, 'monitor_strategy': 'loss', 'use_clusters': False, 'log_wandb': False, 'n_test_set': 10,
+            'ngram_label': None, 'seq_sampling_strategy': 'random', 'clean_stopwords_kwds': False,
+            't5_keyword_min_occ': None,
+            't5_tasks': ['directntp'], 'device': 'cuda:0'}
+
+    exp_config = ExperimentConfig(**vars)
+
+    t5_main(exp_config)

@@ -42,22 +42,28 @@ from transformers import AutoModel
 
 class LSTMEncoder(nn.Module):
 
-    def __init__(self, model_name: str, model_hidden_states_num: int, hidden_size: int,
-                 directions_fusion_strat: Literal["sum", "mean", "concat"] = "concat"):
+    def __init__(self, model_name: str, model_hidden_states_num: int,
+                 directions_fusion_strat: Literal["sum", "mean", "concat"] = "concat",
+                 freeze_embedding_model: bool = False):
+
         super().__init__()
 
         self.model = AutoModel.from_pretrained(model_name, output_hidden_states=True)
 
+        if freeze_embedding_model:
+            for param in self.model.parameters():
+                param.requires_grad = False
+
         # first value of tuple is the function and second is the expected output size of that function
-        directions_available_fusions = {"sum": (self._fuse_directions_sum, hidden_size),
-                                        "mean": (self._fuse_directions_mean, hidden_size),
-                                        "concat": (self._fuse_directions_concat, hidden_size * 2)}
+        directions_available_fusions = {"sum": (self._fuse_directions_sum, self.model.config.hidden_size * 2),
+                                        "mean": (self._fuse_directions_mean, self.model.config.hidden_size * 2),
+                                        "concat": (self._fuse_directions_concat, self.model.config.hidden_size * 4)}
 
         self.directions_fusion_strat, self.expected_output_size = directions_available_fusions[directions_fusion_strat]
 
         self.lstm = nn.LSTM(
             input_size=self.model.config.hidden_size,
-            hidden_size=hidden_size,
+            hidden_size=self.model.config.hidden_size * 2,
             bidirectional=True,
             batch_first=True,
         )
@@ -74,10 +80,10 @@ class LSTMEncoder(nn.Module):
         return torch.concat(directions, dim=-1)
 
     def forward(self, x) -> torch.Tensor:
-        with torch.no_grad():
-            embeddings = torch.stack([hs for hs in self.model(**x).hidden_states[-self.hidden_states_num:]]).mean(0)
 
-        _, (x, _) = self.lstm(embeddings)
-        x = self.directions_fusion_strat([x[0, :], x[1, :]])
+        embeddings = torch.stack(self.model(**x).hidden_states[-self.hidden_states_num:]).mean(0)
 
-        return x
+        _, (h, _) = self.lstm(embeddings)
+        out = self.directions_fusion_strat([h[0, :, :], h[1, :, :]])
+
+        return out

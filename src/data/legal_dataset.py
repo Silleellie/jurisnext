@@ -11,6 +11,7 @@ import datasets
 import numpy as np
 import pandas as pd
 import wandb
+from cytoolz import merge_with
 from datasets import Dataset, NamedSplit
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -112,6 +113,7 @@ SeqTargetTuple = namedtuple("SeqTargetTuple", ["seq_title", "target_title",
                                                "seq_text", "target_text",
                                                "seq_keywords", "target_keywords"])
 
+
 class LegalDataset:
     cleaned_dataset_path: str = os.path.join(INTERIM_DATA_DIR, "cleaned_dataframe.pkl")
     train_path: str = os.path.join(PROCESSED_DATA_DIR, "train.pkl")
@@ -121,10 +123,24 @@ class LegalDataset:
     def __init__(self,
                  n_test_set: int,
                  random_seed: int,
-                 sampling_strategy: Literal['random', 'augment'] = "random"):
+                 sampling_strategy: Literal['random', 'augment'] = "random",
+                 start_sampling_strategy: Literal['beginning', 'random'] = "beginning",
+                 test_sampling_strategy: Literal['random', 'augment'] = None):
+
+        if test_sampling_strategy is None:
+            print("Sampling strategy not defined for the test set, same of the training/validation set will be used: "
+                  f"{sampling_strategy}")
+            test_sampling_strategy = sampling_strategy
+
+        if n_test_set > 1 and test_sampling_strategy == "augment":
+            print(f"WARNING: set n_test_set to a number greater than 1 (n_test_set == {n_test_set}) but "
+                  f"test_sampling_strategy is 'augment'. With this sampling strategy, n_test_set is forced to 1")
+            n_test_set = 1
 
         self.random_seed = random_seed
         self.sampling_strategy = sampling_strategy
+        self.start_sampling_strategy = start_sampling_strategy
+        self.test_sampling_strategy = test_sampling_strategy
         self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_set)
 
     @cached_property
@@ -164,7 +180,7 @@ class LegalDataset:
 
         train_dataset = self._group_dataset(train_dataset, to_sample=False)
         val_dataset = self._group_dataset(val_dataset, to_sample=True)
-        test_dataset = [self._group_dataset(test_dataset, to_sample=True) for _ in range(n_test_set)]
+        test_dataset = [self._group_dataset(test_dataset, to_sample=True, test_mode=True) for _ in range(n_test_set)]
 
         train_dataset.to_pickle(self.train_path)
         val_dataset.to_pickle(self.val_path)
@@ -198,7 +214,7 @@ class LegalDataset:
 
         return train_set, val_set, test_set
 
-    def _group_dataset(self, dataset_split, to_sample: bool = False):
+    def _group_dataset(self, dataset_split, to_sample: bool = False, test_mode: bool = False):
 
         grouped_split = dataset_split.groupby("case_id")[['title', 'text', 'rel_keywords']].agg(list)
 
@@ -211,78 +227,116 @@ class LegalDataset:
 
         grouped_split = grouped_split.reset_index()
 
+        list_of_dicts = grouped_split.to_dict(orient="records")
+        mapped_results = []
         if to_sample:
-            sampled_split = grouped_split.apply(self.perform_sampling, axis=1)
-            grouped_split = pd.DataFrame.from_records(sampled_split)
-            if self.sampling_strategy == "augment":
-                grouped_split = grouped_split.explode(column=grouped_split.columns.tolist())
+
+            # Process the data in batches of 1 row
+            # (we didn't invest time in vectorizing this op, so passing a higher batch size
+            # has no effect)
+            batch_size = 1
+            for i in range(0, len(list_of_dicts), batch_size):
+                # merge_with to uniform input of perform_sampling fn to that of hugging face map function
+                batch_dict = merge_with(list, *list_of_dicts[i:i + batch_size])
+                mapped_results.append(self.perform_sampling(batch_dict, test_mode))
+
+            grouped_split = pd.DataFrame.from_records(mapped_results)
+            grouped_split = grouped_split.explode(column=grouped_split.columns.tolist())
 
         return grouped_split
 
-    def perform_sampling(self, batch):
-        if self.sampling_strategy == "random":
+    def perform_sampling(self, batch, test_mode: bool = False):
+
+        sample_strategy_to_check = self.test_sampling_strategy if test_mode is True else self.sampling_strategy
+
+        if sample_strategy_to_check == "random":
             return self._sample_sequences(batch)
         else:
             return self._augment_sequences(batch)
 
-    @staticmethod
-    def _sample_sequences(batch):
+    def _sample_sequences(self, batch):
 
-        # a sequence has at least 1 data point, but it can have more depending on the length of the sequence
-        # We must ensure that at least an element can be used as test set
-        # in the "sliding_training_size" is included the target item
-        sliding_size = random.randint(1, len(batch["text_sequence"]) - 1)
-
-        # TO DO: consider starting always from the initial paragraph,
-        # rather than varying the starting point of the seq
-        # start_index = random.randint(0, len(batch["text_sequence"]) - sliding_size - 1)
-        start_index = 0
-        end_index = start_index + sliding_size
-
-        return {
-            "case_id": batch["case_id"],
-            "input_title_sequence": batch["title_sequence"][start_index:end_index],
-            "input_text_sequence": batch["text_sequence"][start_index:end_index],
-            "input_keywords_sequence": batch["rel_keywords_sequence"][start_index:end_index],
-            "immediate_next_title": batch["title_sequence"][end_index],
-            "immediate_next_text": batch["text_sequence"][end_index],
-            "immediate_next_rel_keywords": batch["rel_keywords_sequence"][end_index]
+        out_dict = {
+            "case_id": [],
+            "input_title_sequence": [],
+            "input_text_sequence": [],
+            "input_keywords_sequence": [],
+            "immediate_next_title": [],
+            "immediate_next_text": [],
+            "immediate_next_rel_keywords": []
         }
 
+        for case_id, title_sequence, text_sequence, rel_keywords_sequence in zip(batch["case_id"],
+                                                                                 batch["title_sequence"],
+                                                                                 batch["text_sequence"],
+                                                                                 batch["rel_keywords_sequence"]):
+            # a sequence has at least 1 data point, but it can have more depending on the length of the sequence
+            # We must ensure that at least an element can be used as test set
+            # in the "sliding_training_size" is included the target item
+            sliding_size = random.randint(1, len(title_sequence) - 1)
+
+            start_index = 0
+            if self.start_sampling_strategy == "random":
+                start_index = random.randint(0, len(title_sequence) - sliding_size - 1)
+
+            end_index = start_index + sliding_size
+
+            out_dict["case_id"].append(case_id)
+            out_dict["input_title_sequence"].append(title_sequence[start_index:end_index])
+            out_dict["input_text_sequence"].append(text_sequence[start_index:end_index])
+            out_dict["input_keywords_sequence"].append(rel_keywords_sequence[start_index:end_index])
+            out_dict["immediate_next_title"].append(title_sequence[end_index])
+            out_dict["immediate_next_text"].append(text_sequence[end_index])
+            out_dict["immediate_next_rel_keywords"].append(rel_keywords_sequence[end_index])
+
+        return out_dict
+
     @staticmethod
-    def _augment_sequences(sample):
+    def _augment_sequences(batch):
 
-        all_title_sequence = sample["title_sequence"]
-        all_text_sequence = sample["text_sequence"]
-        all_keywords_sequence = sample["rel_keywords_sequence"]
-
-        assert len(all_title_sequence) >= 2, "All sequences must have at least 2 data points"
-
-        n_sequences = len(all_title_sequence)
-
-        all_seq = []
-        for i in range(1, n_sequences):
-            seq_title = all_title_sequence[0:i]
-            seq_text = all_text_sequence[0:i]
-            seq_keywords = all_keywords_sequence[0:i]
-
-            target_title = all_title_sequence[i]
-            target_text = all_text_sequence[i]
-            target_keywords = all_keywords_sequence[i]
-
-            all_seq.append(SeqTargetTuple(seq_title, target_title,
-                                          seq_text, target_text,
-                                          seq_keywords, target_keywords))
-
-        return {
-            "case_id": [sample["case_id"] for _ in range(1, n_sequences)],
-            "input_title_sequence": [el.seq_title for el in all_seq],
-            "input_text_sequence": [el.seq_text for el in all_seq],
-            "input_keywords_sequence": [el.seq_keywords for el in all_seq],
-            "immediate_next_title": [el.target_title for el in all_seq],
-            "immediate_next_text": [el.target_text for el in all_seq],
-            "immediate_next_rel_keywords": [el.target_keywords for el in all_seq]
+        out_dict = {
+            "case_id": [],
+            "input_title_sequence": [],
+            "input_text_sequence": [],
+            "input_keywords_sequence": [],
+            "immediate_next_title": [],
+            "immediate_next_text": [],
+            "immediate_next_rel_keywords": []
         }
+
+        for case_id, all_title_sequence, all_text_sequence, all_keywords_sequence in zip(batch["case_id"],
+                                                                                         batch["title_sequence"],
+                                                                                         batch["text_sequence"],
+                                                                                         batch["rel_keywords_sequence"]
+                                                                                         ):
+
+            assert len(all_title_sequence) >= 2, "All sequences must have at least 2 data points"
+
+            n_sequences = len(all_title_sequence)
+
+            all_seq = []
+            for i in range(1, n_sequences):
+                seq_title = all_title_sequence[0:i]
+                seq_text = all_text_sequence[0:i]
+                seq_keywords = all_keywords_sequence[0:i]
+
+                target_title = all_title_sequence[i]
+                target_text = all_text_sequence[i]
+                target_keywords = all_keywords_sequence[i]
+
+                all_seq.append(SeqTargetTuple(seq_title, target_title,
+                                              seq_text, target_text,
+                                              seq_keywords, target_keywords))
+
+            out_dict["case_id"].extend([case_id for _ in range(1, n_sequences)])
+            out_dict["input_title_sequence"].extend([el.seq_title for el in all_seq])
+            out_dict["input_text_sequence"].extend([el.seq_text for el in all_seq])
+            out_dict["input_keywords_sequence"].extend([el.seq_keywords for el in all_seq])
+            out_dict["immediate_next_title"].extend([el.target_title for el in all_seq])
+            out_dict["immediate_next_text"].extend([el.target_text for el in all_seq])
+            out_dict["immediate_next_rel_keywords"].extend([el.target_keywords for el in all_seq])
+
+        return out_dict
 
     def get_hf_datasets(self, merge_train_val: bool = False) -> Dict[str, datasets.Dataset]:
 
@@ -336,6 +390,7 @@ class LegalDataset:
 
         obj.random_seed = exp_config.random_seed
         obj.sampling_strategy = exp_config.seq_sampling_strategy
+        obj.start_sampling_strategy = exp_config.seq_sampling_start_strategy
 
         return obj
 
@@ -402,7 +457,9 @@ def data_main(exp_config: ExperimentConfig):
 
     original_df: pd.DataFrame = pd.read_pickle(original_df_path)
     cleaned_df = clean_original_dataset(original_df)
-    cleaned_df = clean_keywords(cleaned_df)
+
+    if exp_config.clean_stopwords_kwds is True:
+        cleaned_df = clean_keywords(cleaned_df)
 
     ngram_cut_df = max_ngram_cut(cleaned_df, cutoff_ngram=exp_config.ngram_label)
     ngram_cut_df.to_pickle(cleaned_df_output_path)
@@ -410,7 +467,9 @@ def data_main(exp_config: ExperimentConfig):
     # the constructor will create and dump the splits
     ds = LegalDataset(n_test_set=exp_config.n_test_set,
                       random_seed=exp_config.random_seed,
-                      sampling_strategy=exp_config.seq_sampling_strategy)
+                      sampling_strategy=exp_config.seq_sampling_strategy,
+                      start_sampling_strategy=exp_config.seq_sampling_start_strategy,
+                      test_sampling_strategy=exp_config.test_seq_sampling_strategy)
 
     # create directory where all the distributions will be saved
     os.makedirs(os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name), exist_ok=True)
@@ -471,4 +530,4 @@ def data_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    data_main(ExperimentConfig("we", "we", "we", seq_sampling_strategy="random"))
+    data_main(ExperimentConfig("we", "we", "we", seq_sampling_strategy="random", seq_sampling_start_strategy="random"))

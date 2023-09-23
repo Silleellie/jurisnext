@@ -1,21 +1,24 @@
 import argparse
 import dataclasses
 import os
-from pathlib import Path
 
 import wandb
 
 from src.data.legal_dataset import data_main
+from src.evaluation.ntp_models_eval.cnn_eval import cnn_eval_main
+from src.evaluation.ntp_models_eval.lstm_eval import lstm_eval_main
 from src.evaluation.ntp_models_eval.no_finetune import no_finetune_eval_main
 from src.model.next_title_prediction.ntp_models.bert import bert_main, NTPBert
+from src.model.next_title_prediction.ntp_models.custom_encoders.cnn_encoder_model import cnn_model_main
+from src.model.next_title_prediction.ntp_models.custom_encoders.lstm_encoder_model import lstm_model_main
 from src.model.next_title_prediction.ntp_models.lm.t5.t5 import t5_main, NTPT5
-from src.model.next_title_prediction.ntp_models.multimodal.fusion import multimodal_main
+from src.model.next_title_prediction.ntp_models.custom_encoders.fusion import fusion_main
 from src.model.next_title_prediction.ntp_models.nli_deberta import nli_deberta_main, NTPNliDeberta
 
 from src.evaluation.ntp_models_eval.t5_eval import t5_eval_main
 from src.evaluation.ntp_models_eval.bert_eval import bert_eval_main
 from src.evaluation.ntp_models_eval.nli_deberta_eval import nli_deberta_eval_main
-from src.evaluation.ntp_models_eval.fusion_eval import multimodal_eval_main
+from src.evaluation.ntp_models_eval.fusion_eval import fusion_eval_main
 
 from src.utils import seed_everything, init_wandb
 from src import ExperimentConfig, MODELS_DIR
@@ -25,8 +28,10 @@ available_models_fns = {
     "bert": (NTPBert.default_checkpoint, bert_main, bert_eval_main),
     "nli_deberta": (NTPNliDeberta.default_checkpoint, nli_deberta_main, nli_deberta_eval_main),
 
-    # multimodal is not a pretrained model, has no default checkpoint
-    "multimodal": ('multimodal_fusion', multimodal_main, multimodal_eval_main),
+    # fusion is not a pretrained model, has no default checkpoint
+    "fusion": ('fusion', fusion_main, fusion_eval_main),
+    "lstm": ('lstm', lstm_model_main, lstm_eval_main),
+    "cnn": ('cnn', cnn_model_main, cnn_eval_main),
 
     "no_finetune": ('no_finetune', None, no_finetune_eval_main)
 }
@@ -46,8 +51,14 @@ if __name__ == '__main__':
                         metavar='2')
     parser.add_argument('-seed', '--random_seed', type=int, default=42,
                         help='random seed', metavar='42')
+    parser.add_argument('-monitor', '--monitor_strategy', type=str, default='loss', const='loss', nargs='?',
+                        choices=['loss', 'metric'],
+                        help='Choose the strategy used to save the best model. If "loss", the validation loss will be '
+                             'used to save the best model, if "metric", the reference metric (Accuracy weighted or '
+                             'Hit) will be used to save the best model',
+                        metavar='loss')
     parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?', required=True,
-                        choices=['t5', 'bert', 'nli_deberta', 'multimodal', 'no_finetune'],
+                        choices=['t5', 'bert', 'nli_deberta', 'fusion', 'lstm', 'cnn', 'no_finetune'],
                         help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
                              'bert to finetune a bert checkpoint for Next Title Prediction, '
                              'nli_deberta to finetune a deberta checkpoint for Next Title Prediction, '
@@ -57,8 +68,6 @@ if __name__ == '__main__':
     parser.add_argument('-ck', '--checkpoint', type=str, default=None,
                         help='Add checkpoint to use for train (e.g. google/flan-t5-small with t5 model)',
                         metavar='None')
-    parser.add_argument('--use_clusters', action=argparse.BooleanOptionalAction, default=False,
-                        help='Use default clustering algorithm associated with the model during train and eval')
     parser.add_argument('--log_wandb', action=argparse.BooleanOptionalAction, default=False,
                         help='Log pipeline information regarding data, train and eval on wandb')
     parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
@@ -66,9 +75,10 @@ if __name__ == '__main__':
                         metavar='10')
     parser.add_argument('-t5_t', '--t5_tasks', nargs="+", default=None,
                         choices=["directNTP", "directNTPSideInfo", "boolNTP"],
-                        help='Specify which train task to use to fine tune NTPT55. If not specified, all defined tasks '
-                             'will be used. This parameter controls also which tasks are used in the eval phase, note'
-                             'that boolNTP will be ignored in this phase (as it is a support task)',
+                        help='Specify which train task to use to fine tune NTPT55. If not specified, all possible tasks'
+                             ' will be used. The first task specified will be used as validation task. '
+                             'In the eval phase, all possible tasks are evaluated (apart from BoolNTP which is a '
+                             'support task)',
                         metavar='None')
     parser.add_argument('-t5_kw_min', '--t5_keyword_min_occ', type=int, default=None,
                         help='Specify what is the min occurrences that a keyword should have in order to be picked as '
@@ -80,9 +90,27 @@ if __name__ == '__main__':
     parser.add_argument('-seq_sampling', '--seq_sampling_strategy', type=str, default="random",
                         choices=['random', 'augment'],
                         help='Specify how sampling is performed on the dataset. "random" will consider randomly '
-                             'picked sequences (starting always from the first element), "augment" will consider all '
-                             'possible incremental sequences',
+                             'picked sequences, "augment" will consider all possible incremental sequences',
                         metavar='random')
+    parser.add_argument('-seq_sampling_start', '--seq_sampling_start_strategy', type=str, default="beginning",
+                        choices=['beginning', 'random'],
+                        help='Specify how the sampled sequence should start. This parameter is ignored if '
+                             '--seq_sampling_strategy is set to "augment". "beginning" will sample the sequence '
+                             'starting always from the first element, "random" will sample also the starting point '
+                             'of the sampled sequence',
+                        metavar='beginning')
+    parser.add_argument('-test_seq_sampling', '--test_seq_sampling_strategy', type=str, default=None,
+                        choices=['random', 'augment'],
+                        help='Specify how sampling is performed on the test set. "random" will consider randomly '
+                             'picked sequences, "augment" will consider all possible incremental sequences. '
+                             'If not set, the sampling strategy of train/val will be used. If this parameter is '
+                             'set to "augment" and --n_test_set > 1, a warning is printed and n_test_set is forced '
+                             'to 1',
+                        metavar='None')
+    parser.add_argument('-clean_kdws', '--clean_stopwords_kwds', action=argparse.BooleanOptionalAction, default=False,
+                        help='Specify whether to remove stopwords from the keywords column of the dataset or not')
+    parser.add_argument('-f_e_m', '--freeze_emb_model', action=argparse.BooleanOptionalAction, default=False,
+                        help='Used by LSTM encoder, define if the model used for embeddings should be frozen during train or not')
     parser.add_argument('-d', '--device', type=str, default="cuda:0",
                         help='Specify the device which should be used during the experiment',
                         metavar='cuda:0')
@@ -145,6 +173,10 @@ if __name__ == '__main__':
                     "n_test_set": exp_config.n_test_set,
                     "random_seed": exp_config.random_seed,
                     "ngram_label": exp_config.ngram_label,
+                    "seq_sampling_strategy": exp_config.seq_sampling_strategy,
+                    "seq_sampling_start_strategy": exp_config.seq_sampling_start_strategy,
+                    "test_seq_sampling_strategy": exp_config.test_seq_sampling_strategy,
+                    "clean_stopwords_kwds": exp_config.clean_stopwords_kwds,
 
                     # these are hardcoded
                     "shuffle": True,
@@ -170,7 +202,6 @@ if __name__ == '__main__':
                     "random_seed": exp_config.random_seed,
                     "model": exp_config.model,
                     "checkpoint": exp_config.checkpoint,
-                    "use_clusters": exp_config.use_clusters,
                     "device": exp_config.device
                 }
 
@@ -178,20 +209,10 @@ if __name__ == '__main__':
                     wandb_dict["t5_tasks"] = exp_config.t5_tasks
                     wandb_dict["t5_keyword_min_occ"] = exp_config.t5_keyword_min_occ
 
-                wandb.config.update()
+                wandb.config.update(wandb_dict)
 
             model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
             model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
-
-            if exp_config.log_wandb:
-                for file in os.listdir(model_path):
-
-                    # load various config json of the model fit as artifact
-                    if Path(file).suffix == ".json":
-                        art = wandb.Artifact(name=file, type=f"hf_config_{exp_config.model}")
-                        art.add_file(os.path.join(model_path, file))
-
-                        wandb.log_artifact(art)
 
     # EVAL PIPELINE
     if 'eval' in exp_config.pipeline_phases:

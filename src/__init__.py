@@ -18,7 +18,6 @@ METRICS_DIR = os.path.join(REPORTS_DIR, "metrics")
 @dataclass
 class ExperimentConfig:
 
-    # these 5 are set in pipeline.py depending on cmd parameters passed
     model: Optional[str] = None
     checkpoint: Optional[str] = None
     exp_name: Optional[str] = None
@@ -27,11 +26,16 @@ class ExperimentConfig:
     train_batch_size: int = 2
     eval_batch_size: int = 2
     random_seed: int = 42
+    monitor_strategy: Literal['loss', 'metric'] = 'metric'
     use_clusters: bool = False
+    freeze_emb_model: bool = False
     log_wandb: bool = False
     n_test_set: int = 10
     ngram_label: Optional[int] = None
     seq_sampling_strategy: Literal['random', 'augment'] = "random"
+    seq_sampling_start_strategy: Literal['beginning', 'random'] = "beginning"
+    test_seq_sampling_strategy: Literal['random', 'augment'] = None
+    clean_stopwords_kwds: bool = False
     t5_keyword_min_occ: Optional[int] = None
     t5_tasks: List[str] = None
     device: str = "cuda:0"
