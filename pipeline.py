@@ -216,7 +216,7 @@ if __name__ == '__main__':
 
     # before evaluating, set fix seed so that even across
     # separate runs of train and eval results are reproducible
-    seed_everything(args.random_seed)
+    seed_everything(args.random_seed, print_seed=False)
 
     # EVAL PIPELINE
     if 'eval' in exp_config.pipeline_phases:
