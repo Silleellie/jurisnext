@@ -220,6 +220,10 @@ if __name__ == '__main__':
             model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
             model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
 
+    # before evaluating, set fix seed so that even across
+    # separate runs of train and eval results are reproducible
+    seed_everything(args.random_seed)
+
     # EVAL PIPELINE
     if 'eval' in exp_config.pipeline_phases:
 
