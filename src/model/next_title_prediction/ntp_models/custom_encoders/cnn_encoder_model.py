@@ -243,7 +243,8 @@ def cnn_model_main(exp_config: ExperimentConfig):
         output_name=output_name,
         log_wandb=exp_config.log_wandb,
         random_seed=random_seed,
-        train_sampling_fn=sampling_fn
+        train_sampling_fn=sampling_fn,
+        monitor_strategy=exp_config.monitor_strategy
     )
 
     trainer.train(train, val)
