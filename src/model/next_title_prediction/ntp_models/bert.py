@@ -45,27 +45,23 @@ class NTPBert(NTPModelHF):
     def get_suggested_optimizer(self):
         return torch.optim.AdamW(list(self.model.parameters()), lr=2e-5)
 
+    # note: this method should be added to ntp abstract to improve abstraction
+    def prepare_batch_pred_supp(self, batch):
+
+        batch = self.prepare_input(batch)
+
+        with torch.no_grad():
+            output_supp = self.prediction_supporter.model(**batch).logits.argmax(dim=1).cpu()
+
+        return {'clusters': output_supp}
+
     def tokenize(self, sample):
 
         next_title = sample["immediate_next_title"]
 
         if self.prediction_supporter is not None:
-            tokenized_sample = self.prediction_supporter.tokenize(sample)
 
-            tokenized_sample["input_ids"] = torch.LongTensor([tokenized_sample["input_ids"]]).to(
-                self.prediction_supporter.model.device)
-            tokenized_sample["token_type_ids"] = torch.LongTensor([tokenized_sample["token_type_ids"]]).to(
-                self.prediction_supporter.model.device)
-            tokenized_sample["attention_mask"] = torch.LongTensor([tokenized_sample["attention_mask"]]).to(
-                self.prediction_supporter.model.device)
-            tokenized_sample["labels"] = torch.LongTensor(tokenized_sample["labels"]).to(
-                self.prediction_supporter.model.device).flatten()
-
-            with torch.no_grad():
-                output_supp = self.prediction_supporter.model(**tokenized_sample)
-
-            predicted_cluster = output_supp.logits.argmax(dim=1).cpu().item()
-            predicted_cluster_str = ClusterLabelMapper.template_label.format(str(predicted_cluster))
+            predicted_cluster_str = ClusterLabelMapper.template_label.format(str(sample["predicted_cluster"]))
 
             output = self.tokenizer(', '.join(sample["input_title_sequence"]) +
                                     f"\n Next immediate cluster: {predicted_cluster_str}",
