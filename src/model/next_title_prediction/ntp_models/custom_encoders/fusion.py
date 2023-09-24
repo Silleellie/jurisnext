@@ -243,9 +243,9 @@ def fusion_main(exp_config: ExperimentConfig):
     model = MultimodalFusionForSequenceClassification(
         MultimodalFusionConfig(
             cnn_encoder_params={
-                "input_dims": [1, 32, 64, 128, 64, 10],
-                "output_dims": [32, 64, 128, 64, 10, 5],
-                "kernel_sizes": [7, 5, 5, 5, 5, 1],
+                "input_dims": [1, 64, 128, 128, 64, 64],
+                "output_dims": [64, 128, 128, 64, 64, 10],
+                "kernel_sizes": [7, 5, 5, 5, 5, 1]
             },
             lstm_encoder_params={
                 "model_name": "bert-base-uncased",
