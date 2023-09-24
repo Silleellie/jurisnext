@@ -151,7 +151,7 @@ class NTPCNNModel(NTPModel):
             image_repr = np.vstack(image_repr)
             # if max length of the sequence which represents the image is different from the model max length
             # add rows full of zeros until the max length is reached
-            image_repr = np.pad(np.vstack(image_repr), [(0, self.config.max_seq_len - len(image_repr)), (0, 0)])
+            image_repr = np.pad(image_repr, [(0, self.config.max_seq_len - len(image_repr)), (0, 0)])
             max_image_repr_value = np.max(image_repr)
             image_repr = torch.from_numpy(image_repr).unsqueeze(0).float().div(max_image_repr_value)
             image_reprs.append(image_repr)
