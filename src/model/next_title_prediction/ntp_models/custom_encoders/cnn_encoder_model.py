@@ -215,8 +215,8 @@ def cnn_model_main(exp_config: ExperimentConfig):
     model = CNNModelForSequenceClassification(
         CNNConfig(
             cnn_encoder_params={
-                "input_dims": [1, 32, 64, 128, 64, 10],
-                "output_dims": [32, 64, 128, 64, 10, 5],
+                "input_dims": [1, 64, 128, 128, 64, 64],
+                "output_dims": [64, 128, 128, 64, 64, 10],
                 "kernel_sizes": [7, 5, 5, 5, 5, 1]
             },
             max_seq_len=100,
