@@ -2,12 +2,11 @@
 
 This project contains **Python** code to train and evaluate models for the *Next Title Prediction* (*NTP*) task on legal documents.
 
-To use the code, the original dataset (named 'pre-processed_representations.pkl') is required and should be placed in the 
-`data/raw` directory located in the project root.
-
 ## Requirements
 
-**Python**: The project has been tested on Python 3.10, support for older/newer versions is not guaranteed.
+**Data**: To use the code, the original dataset (named `pre-processed_representations.pkl`) is required and should be placed in the `data/raw` directory located in the project root
+
+**Python**: The project has been tested on Python **3.10**, support for older/newer versions is not guaranteed.
 
 External libraries have been used and are listed in the `requirements.txt` file in the root of the project.
 It is possible to easily install them using **pip**
@@ -103,7 +102,7 @@ Results of the experiments performed can be checked on ***wandb***:
 
 <p align="center">
     <a href="https://wandb.ai/leshi-cs/BD-Next-Title-Prediction/reports/NTP-Results-Report--Vmlldzo1NDU5Mjky">
-        <img src="https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg" alt="Wandb report" style="max-width:10%;"/>
+        <img src="https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg" alt="Wandb report" style="width:300px;"/>
     </a>
 </p>
 
