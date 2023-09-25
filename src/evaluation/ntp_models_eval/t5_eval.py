@@ -173,7 +173,7 @@ def t5_eval_main(exp_config: ExperimentConfig):
         all_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "ranking_all_results.csv"))
         avg_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "ranking_avg_results.csv"))
 
-    for task_name, (avg_results, all_results) in classification_task_results.items():
+    for task_name, (all_results, avg_results) in classification_task_results.items():
         os.makedirs(os.path.join(METRICS_DIR, exp_config.exp_name, task_name), exist_ok=True)
         all_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "classification_all_results.csv"))
         avg_results.to_csv(os.path.join(METRICS_DIR, exp_config.exp_name, task_name, "classification_avg_results.csv"))
