@@ -11,7 +11,29 @@ import wandb
 from src import ExperimentConfig
 
 
-def seed_everything(seed: int):
+def add_cluster_column(ntp_model, sampled_ds, dataset_split: str, batch_size: int):
+
+    preprocessed_ds_supp = sampled_ds.map(ntp_model.prediction_supporter.tokenize,
+                                          remove_columns=sampled_ds.column_names,
+                                          load_from_cache_file=False,
+                                          keep_in_memory=True,
+                                          desc=f"Tokenizing {dataset_split} for prediction supporter")
+    preprocessed_ds_supp.set_format("torch")
+
+    predicted_clusters = preprocessed_ds_supp.map(ntp_model.prepare_batch_pred_supp,
+                                                  batched=True,
+                                                  batch_size=batch_size,
+                                                  remove_columns=preprocessed_ds_supp.column_names,
+                                                  load_from_cache_file=False,
+                                                  keep_in_memory=True,
+                                                  desc="Computing cluster prediction")
+
+    sampled_ds = sampled_ds.add_column("predicted_cluster", predicted_clusters["clusters"].numpy())
+
+    return sampled_ds
+
+
+def seed_everything(seed: int, print_seed: bool = True):
     """
     Function which fixes the random state of each library used by this repository with the seed
     specified when invoking `pipeline.py`
@@ -31,7 +53,9 @@ def seed_everything(seed: int):
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-    print(f"Random seed set as {seed}")
+
+    if print_seed:
+        print(f"Random seed set as {seed}")
 
     return seed
 

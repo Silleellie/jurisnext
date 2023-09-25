@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import os
+
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertForSequenceClassification, BertConfig
 
-from src import ExperimentConfig
+from src import ExperimentConfig, MODELS_DIR
 from src.data.legal_dataset import LegalDataset
-from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig
+from src.model.clustering import ClusterLabelMapper, KMeansAlg
+from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig, NTPModel
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
+from src.model.sentence_encoders import SentenceTransformerEncoder
 
 
 class NTPBertConfig(BertConfig, NTPConfig):
@@ -27,20 +31,52 @@ class NTPBert(NTPModelHF):
 
     def __init__(self,
                  pretrained_model_or_pth: str = default_checkpoint,
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 prediction_supporter: NTPModel = None,
                  **config_kwargs):
 
         super().__init__(
             pretrained_model_or_pth=pretrained_model_or_pth,
+            cluster_label_mapper=cluster_label_mapper,
+            prediction_supporter=prediction_supporter,
             **config_kwargs
         )
 
     def get_suggested_optimizer(self):
         return torch.optim.AdamW(list(self.model.parameters()), lr=2e-5)
 
+    # note: this method should be added to ntp abstract to improve abstraction
+    def prepare_batch_pred_supp(self, batch):
+
+        batch = self.prepare_input(batch)
+
+        with torch.no_grad():
+            output_supp = self.prediction_supporter.model(**batch).logits.argmax(dim=1).cpu()
+
+        return {'clusters': output_supp}
+
     def tokenize(self, sample):
 
-        output = self.tokenizer(', '.join(sample["input_title_sequence"]), truncation=True)
-        labels = [self.config.label2id[sample["immediate_next_title"]]]
+        next_title = sample["immediate_next_title"]
+
+        if self.prediction_supporter is not None:
+
+            predicted_cluster_str = ClusterLabelMapper.template_label.format(str(sample["predicted_cluster"]))
+
+            output = self.tokenizer(', '.join(sample["input_title_sequence"]) +
+                                    f"\n Next immediate cluster: {predicted_cluster_str}",
+                                    truncation=True)
+
+        else:
+
+            output = self.tokenizer(', '.join(sample["input_title_sequence"]), truncation=True)
+
+        if self.cluster_label_mapper is not None:
+            next_title = ClusterLabelMapper.template_label.format(
+                str(self.cluster_label_mapper.predict(sample["immediate_next_title"]))
+            )
+
+        labels = [self.config.label2id[next_title]]
 
         return {'input_ids': output['input_ids'],
                 'token_type_ids': output['token_type_ids'],
@@ -101,16 +137,61 @@ def bert_main(exp_config: ExperimentConfig):
     train = dataset["train"]
     val = dataset["validation"]
 
-    ntp_model = NTPBert(
-        checkpoint,
+    if exp_config.prediction_supporter is None:
 
-        problem_type="single_label_classification",
-        num_labels=len(all_unique_labels),
-        label2id={x: i for i, x in enumerate(all_unique_labels)},
-        id2label={i: x for i, x in enumerate(all_unique_labels)},
+        if exp_config.k_clusters is None:
 
-        device=device
-    )
+            labels_to_predict = all_unique_labels
+            cluster_label = None
+
+        else:
+
+            labels_to_predict = [ClusterLabelMapper.template_label.format(str(i))
+                                 for i in range(0, exp_config.k_clusters)]
+
+            clus_alg = KMeansAlg(
+                n_clusters=exp_config.k_clusters,
+                random_state=exp_config.random_seed,
+                init="k-means++",
+                n_init="auto"
+            )
+
+            sent_encoder = SentenceTransformerEncoder(
+                device=device,
+            )
+
+            cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
+        ntp_model = NTPBert(
+            checkpoint,
+            cluster_label_mapper=cluster_label,
+
+            problem_type="single_label_classification",
+            num_labels=len(labels_to_predict),
+            label2id={x: i for i, x in enumerate(labels_to_predict)},
+            id2label={i: x for i, x in enumerate(labels_to_predict)},
+
+            device=device
+        )
+
+    else:
+
+        labels_to_predict = all_unique_labels
+        pred_sup = NTPBert.load(os.path.join(MODELS_DIR, exp_config.prediction_supporter))
+
+        pred_sup.model.to(device)
+
+        ntp_model = NTPBert(
+            checkpoint,
+            prediction_supporter=pred_sup,
+
+            problem_type="single_label_classification",
+            num_labels=len(labels_to_predict),
+            label2id={x: i for i, x in enumerate(labels_to_predict)},
+            id2label={i: x for i, x in enumerate(labels_to_predict)},
+
+            device=device
+        )
 
     trainer = NTPTrainer(
         ntp_model=ntp_model,
