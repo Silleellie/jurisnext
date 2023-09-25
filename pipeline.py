@@ -68,11 +68,19 @@ if __name__ == '__main__':
     parser.add_argument('-ck', '--checkpoint', type=str, default=None,
                         help='Add checkpoint to use for train (e.g. google/flan-t5-small with t5 model)',
                         metavar='None')
+    parser.add_argument('-k_c', '--k_clusters', type=int, default=None,
+                        help='If specified, it sets the number of clustered labels that will be considered '
+                             'as next possible titles instead of the original labels',
+                        metavar='None')
     parser.add_argument('--log_wandb', action=argparse.BooleanOptionalAction, default=False,
                         help='Log pipeline information regarding data, train and eval on wandb')
     parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
                         help='Specify the number of test set to sample for evaluating the model trained',
                         metavar='10')
+    parser.add_argument('-p_s', '--prediction_supporter', type=str, default=None,
+                        help='Specify the name of the folder in the models directory containing the model to use as '
+                             'prediction supporter',
+                        metavar='None')
     parser.add_argument('-t5_t', '--t5_tasks', nargs="+", default=None,
                         choices=["directNTP", "directNTPSideInfo", "boolNTP"],
                         help='Specify which train task to use to fine tune NTPT55. If not specified, all possible tasks'
