@@ -10,10 +10,8 @@ from transformers import DebertaV2ForSequenceClassification, DebertaV2Config, De
 
 from src import ExperimentConfig
 from src.data.legal_dataset import LegalDataset
-from src.model.clustering import ClusterLabelMapper, KMeansAlg
 from src.model.next_title_prediction.ntp_models_abtract import NTPConfig, NTPModelHF
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
-from src.model.sentence_encoders import SentenceTransformerEncoder
 
 
 class NTPNliDebertaConfig(DebertaV2Config, NTPConfig):
@@ -44,12 +42,10 @@ class NTPNliDeberta(NTPModelHF):
 
     def __init__(self,
                  pretrained_model_or_pth: str = default_checkpoint,
-                 cluster_label_mapper: ClusterLabelMapper = None,
                  **kwargs):
 
         super().__init__(
             pretrained_model_or_pth=pretrained_model_or_pth,
-            cluster_label_mapper=cluster_label_mapper,
             **kwargs
         )
 
@@ -58,14 +54,8 @@ class NTPNliDeberta(NTPModelHF):
 
     def tokenize(self, sample):
 
-        if self.cluster_label_mapper is not None:
-            immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
-            # .item() since it's surely one cluster
-            next_candidate_titles = self.cluster_label_mapper.get_labels_from_cluster(immediate_next_cluster.item())
-            text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
-        else:
-            next_candidate_titles = np.array(self.config.all_unique_labels)
-            text = ", ".join(sample["input_title_sequence"])
+        next_candidate_titles = np.array(self.config.all_unique_labels)
+        text = ", ".join(sample["input_title_sequence"])
 
         label = sample["immediate_next_title"]
         label_ent: int = self.config.label2id["entailment"]
@@ -213,33 +203,15 @@ def nli_deberta_main(exp_config: ExperimentConfig):
     batch_size = exp_config.train_batch_size
     eval_batch_size = exp_config.eval_batch_size
     device = exp_config.device
-    use_cluster_alg = exp_config.use_clusters
 
     checkpoint = 'cross-encoder/nli-deberta-v3-xsmall'
     if exp_config.checkpoint is not None:
         checkpoint = exp_config.checkpoint
 
-    random_state = exp_config.random_seed
-
-    ds = LegalDataset.load_dataset()
+    ds = LegalDataset.load_dataset(exp_config)
     dataset = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
-
-    cluster_label = None
-
-    if use_cluster_alg:
-        clus_alg = KMeansAlg(
-            n_clusters=50,
-            random_state=random_state,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        sent_encoder = SentenceTransformerEncoder(
-            device=device,
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+    sampling_fn = ds.perform_sampling
 
     train = dataset["train"]
     val = dataset["validation"]
@@ -247,7 +219,6 @@ def nli_deberta_main(exp_config: ExperimentConfig):
     ntp_model = NTPNliDeberta(
         pretrained_model_or_pth=checkpoint,
         all_unique_labels=list(all_unique_labels),
-        cluster_label_mapper=cluster_label,
         device=device
     )
 
@@ -258,7 +229,9 @@ def nli_deberta_main(exp_config: ExperimentConfig):
         all_labels=all_unique_labels,
         eval_batch_size=eval_batch_size,
         output_name=exp_config.exp_name,
-        log_wandb=exp_config.log_wandb
+        log_wandb=exp_config.log_wandb,
+        train_sampling_fn=sampling_fn,
+        monitor_strategy=exp_config.monitor_strategy
     )
 
     trainer.train(train, val)

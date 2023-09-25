@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
+import os
 
-import numpy as np
 import torch
-from sklearn.utils import compute_class_weight
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertForSequenceClassification, BertConfig
 
-from src import ExperimentConfig
+from src import ExperimentConfig, MODELS_DIR
 from src.data.legal_dataset import LegalDataset
 from src.model.clustering import ClusterLabelMapper, KMeansAlg
-from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig
+from src.model.next_title_prediction.ntp_models_abtract import NTPModelHF, NTPConfig, NTPModel
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 from src.model.sentence_encoders import SentenceTransformerEncoder
 
@@ -19,38 +17,10 @@ from src.model.sentence_encoders import SentenceTransformerEncoder
 class NTPBertConfig(BertConfig, NTPConfig):
 
     def __init__(self,
-                 labels_weights: list = None,
                  device: str = "cpu",
                  **kwargs):
         BertConfig.__init__(self, **kwargs)
         NTPConfig.__init__(self, device)
-
-        self.labels_weights = labels_weights
-        if labels_weights is not None:
-            self.labels_weights = torch.from_numpy(np.array(labels_weights)).float().to(device)
-
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any], **kwargs):
-
-        labels_weights: Optional[torch.Tensor] = kwargs.pop("labels_weights", None)
-        device: Optional[str] = kwargs.pop("device", None)
-
-        if labels_weights is not None:
-            config_dict["labels_weights"] = labels_weights
-
-        if device is not None:
-            config_dict["device"] = device
-
-        return super().from_dict(config_dict, **kwargs)
-
-    # to make __repr__ work we need to convert the tensor to a json serializable format
-    def to_dict(self) -> Dict[str, Any]:
-        super_dict = super().to_dict()
-
-        if isinstance(super_dict["labels_weights"], torch.Tensor):
-            super_dict["labels_weights"] = super_dict["labels_weights"].tolist()
-
-        return super_dict
 
 
 # maybe consider composition rather than multiple inheritance
@@ -62,32 +32,51 @@ class NTPBert(NTPModelHF):
     def __init__(self,
                  pretrained_model_or_pth: str = default_checkpoint,
                  cluster_label_mapper: ClusterLabelMapper = None,
+                 prediction_supporter: NTPModel = None,
                  **config_kwargs):
 
         super().__init__(
             pretrained_model_or_pth=pretrained_model_or_pth,
             cluster_label_mapper=cluster_label_mapper,
+            prediction_supporter=prediction_supporter,
             **config_kwargs
         )
 
     def get_suggested_optimizer(self):
         return torch.optim.AdamW(list(self.model.parameters()), lr=2e-5)
 
+    # note: this method should be added to ntp abstract to improve abstraction
+    def prepare_batch_pred_supp(self, batch):
+
+        batch = self.prepare_input(batch)
+
+        with torch.no_grad():
+            output_supp = self.prediction_supporter.model(**batch).logits.argmax(dim=1).cpu()
+
+        return {'clusters': output_supp}
+
     def tokenize(self, sample):
 
-        if self.cluster_label_mapper is not None:
+        next_title = sample["immediate_next_title"]
 
-            immediate_next_cluster = self.cluster_label_mapper.get_clusters_from_labels(sample["immediate_next_title"])
-            text = ", ".join(sample["input_title_sequence"]) + f"\nNext title cluster: {immediate_next_cluster}"
+        if self.prediction_supporter is not None:
 
-            output = self.tokenizer(text,
+            predicted_cluster_str = ClusterLabelMapper.template_label.format(str(sample["predicted_cluster"]))
+
+            output = self.tokenizer(', '.join(sample["input_title_sequence"]) +
+                                    f"\n Next immediate cluster: {predicted_cluster_str}",
                                     truncation=True)
 
         else:
-            output = self.tokenizer(', '.join(sample["input_title_sequence"]),
-                                    truncation=True)
 
-        labels = [self.config.label2id[sample["immediate_next_title"]]]
+            output = self.tokenizer(', '.join(sample["input_title_sequence"]), truncation=True)
+
+        if self.cluster_label_mapper is not None:
+            next_title = ClusterLabelMapper.template_label.format(
+                str(self.cluster_label_mapper.predict(sample["immediate_next_title"]))
+            )
+
+        labels = [self.config.label2id[next_title]]
 
         return {'input_ids': output['input_ids'],
                 'token_type_ids': output['token_type_ids'],
@@ -113,36 +102,20 @@ class NTPBert(NTPModelHF):
         return input_dict
 
     def train_step(self, batch):
-
         output = self(**batch)
-        truth = batch["labels"]
-
-        loss = torch.nn.functional.cross_entropy(
-            output.logits,
-            truth,
-            weight=self.config.labels_weights
-        )
-
-        return loss
+        return output.loss
 
     @torch.no_grad()
     def valid_step(self, batch):
-
         output = self(**batch)
         truth = batch["labels"]
         # batch size (batch_size, num_labels) -> (batch_size, 1)
         predictions = output.logits.argmax(dim=1)
 
-        val_loss = torch.nn.functional.cross_entropy(
-            output.logits,
-            truth,
-            weight=self.config.labels_weights
-        )
-
         predictions = [self.config.id2label[x.cpu().item()] for x in predictions]
         truth = [self.config.id2label[x.cpu().item()] for x in truth]
 
-        return predictions, truth, val_loss
+        return predictions, truth, output.loss
 
 
 def bert_main(exp_config: ExperimentConfig):
@@ -151,58 +124,74 @@ def bert_main(exp_config: ExperimentConfig):
     batch_size = exp_config.train_batch_size
     eval_batch_size = exp_config.eval_batch_size
     device = exp_config.device
-    use_cluster_alg = exp_config.use_clusters
 
     checkpoint = "bert-base-uncased"
     if exp_config.checkpoint is not None:
         checkpoint = exp_config.checkpoint
 
-    random_state = exp_config.random_seed
-
-    ds = LegalDataset.load_dataset()
+    ds = LegalDataset.load_dataset(exp_config)
     dataset = ds.get_hf_datasets()
     all_unique_labels = ds.all_unique_labels
-
-    cluster_label = None
-
-    if use_cluster_alg:
-        clus_alg = KMeansAlg(
-            n_clusters=50,
-            random_state=random_state,
-            init="k-means++",
-            n_init="auto"
-        )
-
-        sent_encoder = SentenceTransformerEncoder(
-            device=device,
-        )
-
-        cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+    sampling_fn = ds.perform_sampling
 
     train = dataset["train"]
     val = dataset["validation"]
 
-    all_train_labels_occurrences = [y for x in train for y in x['title_sequence']]
-    # "smoothing" so that a weight can be calculated for labels which do not appear in the
-    # train set
-    all_train_labels_occurrences.extend(all_unique_labels)
+    if exp_config.prediction_supporter is None:
 
-    labels_weights = compute_class_weight(class_weight='balanced',
-                                          classes=all_unique_labels,
-                                          y=all_train_labels_occurrences)
+        if exp_config.k_clusters is None:
 
-    ntp_model = NTPBert(
-        checkpoint,
-        cluster_label_mapper=cluster_label,
+            labels_to_predict = all_unique_labels
+            cluster_label = None
 
-        problem_type="single_label_classification",
-        num_labels=len(all_unique_labels),
-        label2id={x: i for i, x in enumerate(all_unique_labels)},
-        id2label={i: x for i, x in enumerate(all_unique_labels)},
+        else:
 
-        labels_weights=list(labels_weights),
-        device=device
-    )
+            labels_to_predict = [ClusterLabelMapper.template_label.format(str(i))
+                                 for i in range(0, exp_config.k_clusters)]
+
+            clus_alg = KMeansAlg(
+                n_clusters=exp_config.k_clusters,
+                random_state=exp_config.random_seed,
+                init="k-means++",
+                n_init="auto"
+            )
+
+            sent_encoder = SentenceTransformerEncoder(
+                device=device,
+            )
+
+            cluster_label = ClusterLabelMapper(sent_encoder, clus_alg)
+
+        ntp_model = NTPBert(
+            checkpoint,
+            cluster_label_mapper=cluster_label,
+
+            problem_type="single_label_classification",
+            num_labels=len(labels_to_predict),
+            label2id={x: i for i, x in enumerate(labels_to_predict)},
+            id2label={i: x for i, x in enumerate(labels_to_predict)},
+
+            device=device
+        )
+
+    else:
+
+        labels_to_predict = all_unique_labels
+        pred_sup = NTPBert.load(os.path.join(MODELS_DIR, exp_config.prediction_supporter))
+
+        pred_sup.model.to(device)
+
+        ntp_model = NTPBert(
+            checkpoint,
+            prediction_supporter=pred_sup,
+
+            problem_type="single_label_classification",
+            num_labels=len(labels_to_predict),
+            label2id={x: i for i, x in enumerate(labels_to_predict)},
+            id2label={i: x for i, x in enumerate(labels_to_predict)},
+
+            device=device
+        )
 
     trainer = NTPTrainer(
         ntp_model=ntp_model,
@@ -211,7 +200,9 @@ def bert_main(exp_config: ExperimentConfig):
         all_labels=all_unique_labels,
         eval_batch_size=eval_batch_size,
         output_name=exp_config.exp_name,
-        log_wandb=exp_config.log_wandb
+        log_wandb=exp_config.log_wandb,
+        train_sampling_fn=sampling_fn,
+        monitor_strategy=exp_config.monitor_strategy
     )
 
     trainer.train(train, val)

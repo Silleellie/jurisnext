@@ -3,7 +3,6 @@ import pickle
 from abc import abstractmethod, ABC
 from typing import Union, Tuple, List
 
-import numpy as np
 import torch
 import transformers.optimization
 from transformers import PreTrainedModel, PreTrainedTokenizer, PreTrainedTokenizerFast, AutoTokenizer
@@ -26,11 +25,13 @@ class NTPModel(ABC):
     def __init__(self,
                  model: PreTrainedModel,
                  tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
-                 cluster_label_mapper: ClusterLabelMapper = None):
+                 cluster_label_mapper: ClusterLabelMapper = None,
+                 prediction_supporter: 'NTPModel' = None):
 
         self.model = model
         self.tokenizer = tokenizer
         self.cluster_label_mapper = cluster_label_mapper
+        self.prediction_supporter = prediction_supporter
 
         self.model.to(self.model.config.device)
 
@@ -73,18 +74,18 @@ class NTPModel(ABC):
     def training(self):
         return self.model.training
 
-    def _train_clusters(self, unique_train_labels: np.ndarray, all_labels: np.ndarray):
-        # fit the cluster label mapper with train labels and all labels which should be clustered (both are unique)
-        self.cluster_label_mapper.fit(unique_train_labels, all_labels)
-
     def save(self, save_path):
-
         self.model.save_pretrained(save_path)
         self.tokenizer.save_pretrained(save_path)
 
         if self.cluster_label_mapper is not None:
             with open(os.path.join(save_path, 'cluster_label_mapper.pkl'), "wb") as f:
                 pickle.dump(self.cluster_label_mapper, f)
+
+        if self.prediction_supporter is not None:
+            prediction_supporter_path = os.path.join(save_path, "prediction_supporter")
+            os.makedirs(prediction_supporter_path, exist_ok=True)
+            self.prediction_supporter.save(prediction_supporter_path)
 
     @classmethod
     def load(cls, save_path):
@@ -104,10 +105,17 @@ class NTPModel(ABC):
             with open(cluster_label_mapper_path, "rb") as f:
                 cluster_label_mapper = pickle.load(f)
 
+        prediction_supporter = None
+        prediction_supporter_path = os.path.join(save_path, "prediction_supporter")
+        if os.path.isfile(prediction_supporter_path):
+            prediction_supporter = cls.load(prediction_supporter_path)
+            prediction_supporter = prediction_supporter.model.eval()
+
         new_inst = cls(
             model=model,
             tokenizer=tokenizer,
-            cluster_label_mapper=cluster_label_mapper
+            cluster_label_mapper=cluster_label_mapper,
+            prediction_supporter=prediction_supporter
         )
 
         return new_inst
@@ -123,13 +131,14 @@ class NTPModelHF(NTPModel):
     def __init__(self,
                  pretrained_model_or_pth: str,
                  cluster_label_mapper: ClusterLabelMapper = None,
+                 prediction_supporter: NTPModel = None,
                  **config_kwargs):
 
         self.model_class.config_class = self.config_class
         model = self.model_class.from_pretrained(pretrained_model_or_pth, **config_kwargs)
         tokenizer = self.tokenizer_class.from_pretrained(pretrained_model_or_pth)
 
-        super().__init__(model, tokenizer, cluster_label_mapper)
+        super().__init__(model, tokenizer, cluster_label_mapper, prediction_supporter)
 
     @classmethod
     def load(cls, save_path):
@@ -142,7 +151,14 @@ class NTPModelHF(NTPModel):
             with open(cluster_label_mapper_path, "rb") as f:
                 cluster_label_mapper = pickle.load(f)
 
+        prediction_supporter = None
+        prediction_supporter_path = os.path.join(save_path, "prediction_supporter")
+        if os.path.isfile(prediction_supporter_path):
+            prediction_supporter = cls.load(prediction_supporter_path)
+            prediction_supporter = prediction_supporter.model.eval()
+
         return cls(
             pretrained_model_or_pth=save_path,
-            cluster_label_mapper=cluster_label_mapper
+            cluster_label_mapper=cluster_label_mapper,
+            prediction_supporter=prediction_supporter
         )

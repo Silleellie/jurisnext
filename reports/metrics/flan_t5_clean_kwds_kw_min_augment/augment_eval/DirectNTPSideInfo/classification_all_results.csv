@@ -1,0 +1,2 @@
+,Accuracy (weighted),Precision (weighted),Recall (weighted),F1 (weighted)
+test_split_1,0.6084322929382324,0.5451343059539795,0.6084322929382324,0.5671058893203735

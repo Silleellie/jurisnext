@@ -12,10 +12,22 @@ def nli_deberta_eval_main(exp_config: ExperimentConfig):
     eval_batch_size = exp_config.eval_batch_size
     log_wandb = exp_config.log_wandb
     model_pth = os.path.join(MODELS_DIR, exp_config.exp_name)
+    checkpoint = exp_config.checkpoint
+    device = exp_config.device
 
-    ntp_model = NTPNliDeberta.load(model_pth)
-    ds = LegalDataset.load_dataset()
+    ds = LegalDataset.load_dataset(exp_config)
+    all_unique_labels = ds.all_unique_labels
     test_set = ds.get_hf_datasets()["test"]
+
+    if os.path.isdir(model_pth):
+        ntp_model = NTPNliDeberta.load(model_pth)
+    else:
+
+        ntp_model = NTPNliDeberta(
+            pretrained_model_or_pth=checkpoint,
+            all_unique_labels=list(all_unique_labels),
+            device=device
+        )
 
     evaluator = NTPEvaluator(ntp_model, eval_batch_size=eval_batch_size)
 

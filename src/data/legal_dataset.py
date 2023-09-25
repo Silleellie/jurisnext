@@ -1,17 +1,22 @@
+import re
 import os
 import pickle
 import random
+from collections import namedtuple
 from functools import cached_property
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Literal
 
 import datasets
 import numpy as np
 import pandas as pd
 import wandb
+from cytoolz import merge_with
 from datasets import Dataset, NamedSplit
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
+import nltk
+from nltk.corpus import stopwords
 
 from src import RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, ExperimentConfig, REPORTS_DIR
 
@@ -43,7 +48,70 @@ def clean_original_dataset(original_dataset: pd.DataFrame):
     # some documents have no paragraph information (thus no relevant keywords), we explicitate this
     cleaned_dataset["rel_keywords"] = cleaned_dataset["rel_keywords"].replace("", "!!No paragraph content!!")
 
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"<\s*org[^>]", r"<org>", x))
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"<\s*person[^>]", r"<person>", x))
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"<\s*law[^>]", r"<law>", x))
+
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r"_person >", r"<person>", x))
+
+    # appellatives start of sentence
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(
+        lambda x: re.sub(r'^(mr|ms)(?=\s+|$)', '<appellative>', x))
+
+    # appellatives middle of sentence
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(
+        lambda x: re.sub(r'\s+(mr|ms)(?=\s+|$)', '<appellative>', x))
+
+    # add space when missing around <>
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'(?<=\S)<([^>]+)>', r' <\g<1>>', x))
+
+    # add space when missing around <>
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'<([^>]+)>(?=\S)', r'<\g<1>> ', x))
+
+    # dh 1 -> dh1 (they are both in the dataset)
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'dh(\d+)', r'dh \g<1>', x))
+
+    # caseNUMBER -> case NUMBER
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'case(\d+)', r'case \g<1>', x))
+
+    # numbers
+    cleaned_dataset["title"] = cleaned_dataset["title"].apply(lambda x: re.sub(r'(?<=\s)[ct]?\d+', '<number>', x))
+
     return cleaned_dataset
+
+
+def clean_keywords(original_dataset: pd.DataFrame):
+    nltk.download('stopwords')
+    stops = pd.Series(stopwords.words('english'))
+
+    cleaned_keywords_col = original_dataset["rel_keywords"].str.split(", ")
+
+    # remove stopwords
+    cleaned_keywords_col = cleaned_keywords_col.explode()
+    only_stopwords_index = cleaned_keywords_col.isin(stops)
+    cleaned_keywords_col = cleaned_keywords_col[~only_stopwords_index]
+    cleaned_keywords_col = cleaned_keywords_col.groupby(level=0).agg(list)
+
+    # in case all keywords had stopwords, we have removed them all, so we need to add a placeholder text
+    cleaned_keywords_col[cleaned_keywords_col.str.len() == 0] = ["!!No paragraph content!!"]
+    original_dataset["rel_keywords"] = cleaned_keywords_col.str.join(", ")
+
+    return original_dataset
+
+
+def max_ngram_cut(cleaned_dataset: pd.DataFrame, cutoff_ngram: int = None):
+    tokenizer_pattern = r"<[^>]+>|\S+"
+
+    ngram_cut_df = cleaned_dataset.copy()
+    ngram_cut_df["title"] = ngram_cut_df["title"].apply(lambda x:
+                                                        ' '.join(re.findall(tokenizer_pattern, x)[:cutoff_ngram]))
+
+    return ngram_cut_df
+
+
+SeqTargetTuple = namedtuple("SeqTargetTuple", ["seq_title", "target_title",
+                                               "seq_text", "target_text",
+                                               "seq_keywords", "target_keywords"])
 
 
 class LegalDataset:
@@ -54,9 +122,25 @@ class LegalDataset:
 
     def __init__(self,
                  n_test_set: int,
-                 random_seed: int):
+                 random_seed: int,
+                 sampling_strategy: Literal['random', 'augment'] = "random",
+                 start_sampling_strategy: Literal['beginning', 'random'] = "beginning",
+                 test_sampling_strategy: Literal['random', 'augment'] = None):
+
+        if test_sampling_strategy is None:
+            print("Sampling strategy not defined for the test set, same of the training/validation set will be used: "
+                  f"{sampling_strategy}")
+            test_sampling_strategy = sampling_strategy
+
+        if n_test_set > 1 and test_sampling_strategy == "augment":
+            print(f"WARNING: set n_test_set to a number greater than 1 (n_test_set == {n_test_set}) but "
+                  f"test_sampling_strategy is 'augment'. With this sampling strategy, n_test_set is forced to 1")
+            n_test_set = 1
 
         self.random_seed = random_seed
+        self.sampling_strategy = sampling_strategy
+        self.start_sampling_strategy = start_sampling_strategy
+        self.test_sampling_strategy = test_sampling_strategy
         self.train_df, self.val_df, self.test_df_list = self._generate_splits_and_sample(n_test_set)
 
     @cached_property
@@ -74,6 +158,14 @@ class LegalDataset:
 
         return pd.unique(np.array(all_labels))
 
+    @cached_property
+    def all_ner_tokens(self) -> np.ndarray[str]:
+
+        all_labels = pd.Series(self.all_unique_labels)
+        all_ner_tokens = np.unique(all_labels.str.extractall(r"(?P<ner_token>(<[^>]+>)"))
+
+        return np.unique(all_ner_tokens)
+
     def _generate_splits_and_sample(self, n_test_set: int):
 
         print("Creating dataset splits...")
@@ -88,7 +180,7 @@ class LegalDataset:
 
         train_dataset = self._group_dataset(train_dataset, to_sample=False)
         val_dataset = self._group_dataset(val_dataset, to_sample=True)
-        test_dataset = [self._group_dataset(test_dataset, to_sample=True) for _ in range(n_test_set)]
+        test_dataset = [self._group_dataset(test_dataset, to_sample=True, test_mode=True) for _ in range(n_test_set)]
 
         train_dataset.to_pickle(self.train_path)
         val_dataset.to_pickle(self.val_path)
@@ -122,7 +214,7 @@ class LegalDataset:
 
         return train_set, val_set, test_set
 
-    def _group_dataset(self, dataset_split, to_sample: bool = False):
+    def _group_dataset(self, dataset_split, to_sample: bool = False, test_mode: bool = False):
 
         grouped_split = dataset_split.groupby("case_id")[['title', 'text', 'rel_keywords']].agg(list)
 
@@ -135,34 +227,116 @@ class LegalDataset:
 
         grouped_split = grouped_split.reset_index()
 
+        list_of_dicts = grouped_split.to_dict(orient="records")
+        mapped_results = []
         if to_sample:
-            sampled_split = grouped_split.apply(self.perform_sampling, axis=1)
-            grouped_split = pd.DataFrame.from_records(sampled_split)
+
+            # Process the data in batches of 1 row
+            # (we didn't invest time in vectorizing this op, so passing a higher batch size
+            # has no effect)
+            batch_size = 1
+            for i in range(0, len(list_of_dicts), batch_size):
+                # merge_with to uniform input of perform_sampling fn to that of hugging face map function
+                batch_dict = merge_with(list, *list_of_dicts[i:i + batch_size])
+                mapped_results.append(self.perform_sampling(batch_dict, test_mode))
+
+            grouped_split = pd.DataFrame.from_records(mapped_results)
+            grouped_split = grouped_split.explode(column=grouped_split.columns.tolist())
 
         return grouped_split
 
-    @staticmethod
-    def perform_sampling(batch):
+    def perform_sampling(self, batch, test_mode: bool = False):
 
-        # a sequence has at least 1 data point, but it can have more depending on the length of the sequence
-        # We must ensure that at least an element can be used as test set
-        # in the "sliding_training_size" is included the target item
-        sliding_size = random.randint(1, len(batch["text_sequence"]) - 1)
+        sample_strategy_to_check = self.test_sampling_strategy if test_mode is True else self.sampling_strategy
 
-        # TO DO: consider starting always from the initial paragraph,
-        # rather than varying the starting point of the seq
-        start_index = random.randint(0, len(batch["text_sequence"]) - sliding_size - 1)
-        end_index = start_index + sliding_size
+        if sample_strategy_to_check == "random":
+            return self._sample_sequences(batch)
+        else:
+            return self._augment_sequences(batch)
 
-        return {
-            "case_id": batch["case_id"],
-            "input_text_sequence": batch["text_sequence"][start_index:end_index],
-            "input_title_sequence": batch["title_sequence"][start_index:end_index],
-            "input_keywords_sequence": batch["rel_keywords_sequence"][start_index:end_index],
-            "immediate_next_text": batch["text_sequence"][end_index],
-            "immediate_next_title": batch["title_sequence"][end_index],
-            "immediate_next_rel_keywords": batch["rel_keywords_sequence"][end_index]
+    def _sample_sequences(self, batch):
+
+        out_dict = {
+            "case_id": [],
+            "input_title_sequence": [],
+            "input_text_sequence": [],
+            "input_keywords_sequence": [],
+            "immediate_next_title": [],
+            "immediate_next_text": [],
+            "immediate_next_rel_keywords": []
         }
+
+        for case_id, title_sequence, text_sequence, rel_keywords_sequence in zip(batch["case_id"],
+                                                                                 batch["title_sequence"],
+                                                                                 batch["text_sequence"],
+                                                                                 batch["rel_keywords_sequence"]):
+            # a sequence has at least 1 data point, but it can have more depending on the length of the sequence
+            # We must ensure that at least an element can be used as test set
+            # in the "sliding_training_size" is included the target item
+            sliding_size = random.randint(1, len(title_sequence) - 1)
+
+            start_index = 0
+            if self.start_sampling_strategy == "random":
+                start_index = random.randint(0, len(title_sequence) - sliding_size - 1)
+
+            end_index = start_index + sliding_size
+
+            out_dict["case_id"].append(case_id)
+            out_dict["input_title_sequence"].append(title_sequence[start_index:end_index])
+            out_dict["input_text_sequence"].append(text_sequence[start_index:end_index])
+            out_dict["input_keywords_sequence"].append(rel_keywords_sequence[start_index:end_index])
+            out_dict["immediate_next_title"].append(title_sequence[end_index])
+            out_dict["immediate_next_text"].append(text_sequence[end_index])
+            out_dict["immediate_next_rel_keywords"].append(rel_keywords_sequence[end_index])
+
+        return out_dict
+
+    @staticmethod
+    def _augment_sequences(batch):
+
+        out_dict = {
+            "case_id": [],
+            "input_title_sequence": [],
+            "input_text_sequence": [],
+            "input_keywords_sequence": [],
+            "immediate_next_title": [],
+            "immediate_next_text": [],
+            "immediate_next_rel_keywords": []
+        }
+
+        for case_id, all_title_sequence, all_text_sequence, all_keywords_sequence in zip(batch["case_id"],
+                                                                                         batch["title_sequence"],
+                                                                                         batch["text_sequence"],
+                                                                                         batch["rel_keywords_sequence"]
+                                                                                         ):
+
+            assert len(all_title_sequence) >= 2, "All sequences must have at least 2 data points"
+
+            n_sequences = len(all_title_sequence)
+
+            all_seq = []
+            for i in range(1, n_sequences):
+                seq_title = all_title_sequence[0:i]
+                seq_text = all_text_sequence[0:i]
+                seq_keywords = all_keywords_sequence[0:i]
+
+                target_title = all_title_sequence[i]
+                target_text = all_text_sequence[i]
+                target_keywords = all_keywords_sequence[i]
+
+                all_seq.append(SeqTargetTuple(seq_title, target_title,
+                                              seq_text, target_text,
+                                              seq_keywords, target_keywords))
+
+            out_dict["case_id"].extend([case_id for _ in range(1, n_sequences)])
+            out_dict["input_title_sequence"].extend([el.seq_title for el in all_seq])
+            out_dict["input_text_sequence"].extend([el.seq_text for el in all_seq])
+            out_dict["input_keywords_sequence"].extend([el.seq_keywords for el in all_seq])
+            out_dict["immediate_next_title"].extend([el.target_title for el in all_seq])
+            out_dict["immediate_next_text"].extend([el.target_text for el in all_seq])
+            out_dict["immediate_next_rel_keywords"].extend([el.target_keywords for el in all_seq])
+
+        return out_dict
 
     def get_hf_datasets(self, merge_train_val: bool = False) -> Dict[str, datasets.Dataset]:
 
@@ -194,7 +368,7 @@ class LegalDataset:
         return dataset_dict
 
     @classmethod
-    def load_dataset(cls):
+    def load_dataset(cls, exp_config: ExperimentConfig):
         obj = cls.__new__(cls)  # Does not call __init__
         super(LegalDataset, obj).__init__()  # Don't forget to call any polymorphic base class initializers
 
@@ -213,6 +387,10 @@ class LegalDataset:
 
         with open(cls.test_list_path, "rb") as f:
             obj.test_df_list = pickle.load(f)
+
+        obj.random_seed = exp_config.random_seed
+        obj.sampling_strategy = exp_config.seq_sampling_strategy
+        obj.start_sampling_strategy = exp_config.seq_sampling_start_strategy
 
         return obj
 
@@ -243,22 +421,25 @@ def log_parameters(ds: LegalDataset, exp_name: str):
         "data/val_set_n_cases": ds.val_df.shape[0],
         "data/test_set_n_cases": ds.test_df_list[0].shape[0],
         "data/original_title_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                                          "data_plots",
                                                                           exp_name,
                                                                           "original_titles_counts.png"),
                                                              mode="RGB"),
         "data/train_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                                 "data_plots",
                                                                  exp_name,
                                                                  "train_titles_counts.png"),
                                                     mode="RGB"),
         "data/val_distribution_plot": wandb.Image(os.path.join(REPORTS_DIR,
+                                                               "data_plots",
                                                                exp_name,
                                                                "val_titles_counts.png"),
                                                   mode="RGB"),
         "data/test_distribution_plot": [wandb.Image(os.path.join(REPORTS_DIR,
+                                                                 "data_plots",
                                                                  exp_name,
                                                                  "test_sets",
-                                                                 f"test_{test_split_idx}_"
-                                                                 f"titles_counts.png"),
+                                                                 f"test_{test_split_idx}_titles_counts.png"),
                                                     mode="RGB",
                                                     caption=f"Test idx: {test_split_idx}")
                                         for test_split_idx in range(len(ds.test_df_list))]
@@ -277,20 +458,29 @@ def data_main(exp_config: ExperimentConfig):
     original_df: pd.DataFrame = pd.read_pickle(original_df_path)
     cleaned_df = clean_original_dataset(original_df)
 
-    cleaned_df.to_pickle(cleaned_df_output_path)
+    if exp_config.clean_stopwords_kwds is True:
+        cleaned_df = clean_keywords(cleaned_df)
+
+    ngram_cut_df = max_ngram_cut(cleaned_df, cutoff_ngram=exp_config.ngram_label)
+    ngram_cut_df.to_pickle(cleaned_df_output_path)
 
     # the constructor will create and dump the splits
-    ds = LegalDataset(n_test_set=exp_config.n_test_set, random_seed=exp_config.random_seed)
+    ds = LegalDataset(n_test_set=exp_config.n_test_set,
+                      random_seed=exp_config.random_seed,
+                      sampling_strategy=exp_config.seq_sampling_strategy,
+                      start_sampling_strategy=exp_config.seq_sampling_start_strategy,
+                      test_sampling_strategy=exp_config.test_seq_sampling_strategy)
 
     # create directory where all the distributions will be saved
-    os.makedirs(os.path.join(REPORTS_DIR, exp_config.exp_name), exist_ok=True)
+    os.makedirs(os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name), exist_ok=True)
 
     # PLOT ORIGINAL DATASET TITLES DISTRIBUTION
-    cleaned_df_to_plot = cleaned_df.rename(columns={"title": "titles"})
+    cleaned_df_to_plot = ngram_cut_df.rename(columns={"title": "titles"})
     labels_count = cleaned_df_to_plot["titles"].value_counts().reset_index()
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "original_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name,
+                                                      "original_titles_counts.png"))
 
     # check that all test sets have the same number of cases
     assert all(ds.test_df_list[0].shape[0] == test_set.shape[0] for test_set in ds.test_df_list)
@@ -300,7 +490,8 @@ def data_main(exp_config: ExperimentConfig):
     labels_count = train_df_to_plot["titles"].value_counts().reset_index()
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "train_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name,
+                                                      "train_titles_counts.png"))
 
     # PLOT VAL TITLES DISTRIBUTION
     val_df_to_plot = ds.val_df.explode("input_title_sequence")
@@ -309,12 +500,13 @@ def data_main(exp_config: ExperimentConfig):
     labels_count = labels_count.rename(columns={"index": "titles"})
     labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
-    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, exp_config.exp_name, "val_titles_counts.png"))
+    plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name,
+                                                      "val_titles_counts.png"))
 
     # PLOT TEST TITLES DISTRIBUTION
 
     # create directory where all the test sets distributions will be saved
-    os.makedirs(os.path.join(REPORTS_DIR, exp_config.exp_name, "test_sets"), exist_ok=True)
+    os.makedirs(os.path.join(REPORTS_DIR, "data_plots", exp_config.exp_name, "test_sets"), exist_ok=True)
 
     for i, test_df in enumerate(ds.test_df_list):
         test_df_to_plot = test_df.explode("input_title_sequence")
@@ -324,6 +516,7 @@ def data_main(exp_config: ExperimentConfig):
         labels_count["titles"] = labels_count["titles"].apply(lambda x: x[:20] + "..." if len(x) > 20 else x)
 
         plot_save_label_counts(labels_count, os.path.join(REPORTS_DIR,
+                                                          "data_plots",
                                                           exp_config.exp_name,
                                                           "test_sets",
                                                           f"test_{i}_titles_counts.png"))
@@ -337,4 +530,4 @@ def data_main(exp_config: ExperimentConfig):
 
 
 if __name__ == "__main__":
-    data_main(ExperimentConfig("we", "we", "we"))
+    data_main(ExperimentConfig("we", "we", "we", seq_sampling_strategy="random", seq_sampling_start_strategy="random"))

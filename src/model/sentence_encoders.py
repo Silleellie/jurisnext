@@ -21,14 +21,20 @@ class SentenceEncoder(ABC):
     def encode_batch(self, batch_sentences: List[str]) -> torch.Tensor:
         raise NotImplementedError
 
-    def __call__(self, *sentences: str, desc: str = None, as_tensor: bool = False) -> Union[torch.Tensor, np.ndarray]:
+    def __call__(self,
+                 *sentences: str,
+                 desc: str = None,
+                 as_tensor: bool = False,
+                 show_progress: bool = True) -> Union[torch.Tensor, np.ndarray]:
+
         outputs = []
 
         dataset = datasets.Dataset.from_dict({"sentences": sentences})
 
         pbar = tqdm(dataset.iter(batch_size=self.batch_size),
                     desc="Encoding labels for clustering..." if desc is None else desc,
-                    total=ceil(dataset.num_rows / self.batch_size))
+                    total=ceil(dataset.num_rows / self.batch_size),
+                    disable=not show_progress)
 
         for sample in pbar:
             batch_sentences = sample["sentences"]
@@ -57,7 +63,8 @@ class SentenceTransformerEncoder(SentenceEncoder):
         self.model_name = model_name
 
     def encode_batch(self, batch_sentences: List[str]) -> torch.Tensor:
-        return self.model.encode(batch_sentences, batch_size=self.batch_size, convert_to_tensor=True)
+        return self.model.encode(batch_sentences,
+                                 batch_size=self.batch_size, convert_to_tensor=True, show_progress_bar=False)
 
     def get_parameters(self):
         return {
