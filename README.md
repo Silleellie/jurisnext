@@ -101,7 +101,11 @@ optional arguments:
 
 Results of the experiments performed can be checked on ***wandb***:
 
-<iframe src="https://wandb.ai/leshi-cs/BD-Next-Title-Prediction/reports/NTP-Results-Report--Vmlldzo1NDU5Mjky" style="border:none;height:1024px;width:100%"></iframe>
+<p align="center">
+    <a href="https://wandb.ai/leshi-cs/BD-Next-Title-Prediction/reports/NTP-Results-Report--Vmlldzo1NDU5Mjky">
+        <img src="https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg" alt="Wandb report" style="max-width:10%;"/>
+    </a>
+</p>
 
 Project Organization
 ------------
