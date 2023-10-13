@@ -1,7 +1,7 @@
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, ClassVar, Literal
+from typing import Optional, List, Literal
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_PATH = str(Path(os.path.join(_THIS_DIR, "..")).resolve())
@@ -27,9 +27,7 @@ class ExperimentConfig:
     eval_batch_size: int = 2
     random_seed: int = 42
     monitor_strategy: Literal['loss', 'metric'] = 'metric'
-    freeze_emb_model: bool = False
     k_clusters: Optional[int] = None
-    prediction_supporter: Optional[str] = None
     log_wandb: bool = False
     n_test_set: int = 10
     ngram_label: Optional[int] = None

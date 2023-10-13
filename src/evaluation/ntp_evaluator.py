@@ -7,7 +7,6 @@ import numpy as np
 
 from src.evaluation.metrics import Metric
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel
-from src.utils import add_cluster_column
 
 
 class NTPEvaluator:
@@ -24,9 +23,6 @@ class NTPEvaluator:
                  metrics: List[Metric]):
 
         self.ntp_model.eval()
-
-        if self.ntp_model.prediction_supporter is not None:
-            test_dataset = add_cluster_column(self.ntp_model, test_dataset, "test set", self.eval_batch_size)
 
         preprocessed_test = test_dataset.map(self.ntp_model.tokenize,
                                              remove_columns=test_dataset.column_names,

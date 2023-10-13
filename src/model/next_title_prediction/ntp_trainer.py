@@ -1,4 +1,3 @@
-import itertools
 import os
 import time
 from math import ceil
@@ -14,7 +13,6 @@ from tqdm import tqdm
 from src import MODELS_DIR
 from src.evaluation.metrics import Hit, Accuracy, Metric
 from src.model.next_title_prediction.ntp_models_abtract import NTPModel
-from src.utils import add_cluster_column
 
 
 class NTPTrainer:
@@ -53,23 +51,9 @@ class NTPTrainer:
 
     def train(self, train_dataset: datasets.Dataset, validation_dataset: datasets.Dataset = None):
 
-        if self.ntp_model.cluster_label_mapper is not None:
-            # retrieve all unique labels which appear in train set
-            flat_train_labels = itertools.chain.from_iterable(train_dataset["title_sequence"])
-            unique_train_labels = np.unique(np.fromiter(flat_train_labels, dtype=object)).astype(str)
-            self.ntp_model.cluster_label_mapper.fit(unique_train_labels, self.all_labels)
-
-            if self.log_wandb:
-                wandb.config.update({
-                    "clusters": self.ntp_model.cluster_label_mapper.get_parameters()
-                })
-
         # validation set remains the same and should NOT be sampled at each epoch, otherwise
         # results are not comparable
         self.ntp_model.eval()  # eval because the "tokenize" function select different tasks depending on the mode
-
-        if self.ntp_model.prediction_supporter is not None:
-            validation_dataset = add_cluster_column(self.ntp_model, validation_dataset, "val set", self.batch_size)
 
         preprocessed_val = validation_dataset.map(self.ntp_model.tokenize,
                                                   remove_columns=validation_dataset.column_names,
@@ -106,9 +90,6 @@ class NTPTrainer:
                                                load_from_cache_file=False,
                                                keep_in_memory=True,
                                                desc="Sampling train set with chosen strategy")
-
-            if self.ntp_model.prediction_supporter is not None:
-                sampled_train = add_cluster_column(self.ntp_model, sampled_train, "train set", self.batch_size)
 
             preprocessed_train = sampled_train.map(self.ntp_model.tokenize,
                                                    remove_columns=sampled_train.column_names,

@@ -9,8 +9,7 @@ from src import MODELS_DIR, METRICS_DIR, ExperimentConfig
 from src.data.legal_dataset import LegalDataset
 from src.evaluation.metrics import MAP, MRR, Hit, Accuracy, Precision, Recall, F1
 from src.evaluation.ntp_evaluator import NTPEvaluator
-from src.model.next_title_prediction.ntp_models import NTPT5, DirectNTP, DirectNTPSideInfo, ClusteredNTP, \
-    ClusteredNTPSideInfo
+from src.model.next_title_prediction.t5 import NTPT5, DirectNTP, DirectNTPSideInfo
 from src.model.sentence_encoders import SentenceTransformerEncoder
 
 
@@ -53,10 +52,6 @@ def eval_t5(exp_config, evaluator, test_set, metric_list, prefix):
             DirectNTPSideInfo(test_split["input_keywords_sequence"],
                               minimum_occ_number=exp_config.t5_keyword_min_occ)
         ]
-
-        if exp_config.use_clusters:
-            test_task_list.append(ClusteredNTP())
-            test_task_list.append(ClusteredNTPSideInfo())
 
         for j, test_task in enumerate(test_task_list):
             print(test_task)

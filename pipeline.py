@@ -5,36 +5,11 @@ import os
 import wandb
 
 from src.data.legal_dataset import data_main
-from src.evaluation.ntp_models_eval.cnn_eval import cnn_eval_main
-from src.evaluation.ntp_models_eval.lstm_eval import lstm_eval_main
-from src.evaluation.ntp_models_eval.no_finetune import no_finetune_eval_main
-from src.model.next_title_prediction.ntp_models.bert import bert_main, NTPBert
-from src.model.next_title_prediction.ntp_models.custom_encoders.cnn_encoder_model import cnn_model_main
-from src.model.next_title_prediction.ntp_models.custom_encoders.lstm_encoder_model import lstm_model_main
-from src.model.next_title_prediction.ntp_models.lm.t5.t5 import t5_main, NTPT5
-from src.model.next_title_prediction.ntp_models.custom_encoders.fusion import fusion_main
-from src.model.next_title_prediction.ntp_models.nli_deberta import nli_deberta_main, NTPNliDeberta
-
-from src.evaluation.ntp_models_eval.t5_eval import t5_eval_main
-from src.evaluation.ntp_models_eval.bert_eval import bert_eval_main
-from src.evaluation.ntp_models_eval.nli_deberta_eval import nli_deberta_eval_main
-from src.evaluation.ntp_models_eval.fusion_eval import fusion_eval_main
+from src.model.next_title_prediction.t5.t5 import t5_main, NTPT5
+from src.evaluation.t5_eval import t5_eval_main
 
 from src.utils import seed_everything, init_wandb
 from src import ExperimentConfig, MODELS_DIR
-
-available_models_fns = {
-    "t5": (NTPT5.default_checkpoint, t5_main, t5_eval_main),
-    "bert": (NTPBert.default_checkpoint, bert_main, bert_eval_main),
-    "nli_deberta": (NTPNliDeberta.default_checkpoint, nli_deberta_main, nli_deberta_eval_main),
-
-    # fusion is not a pretrained model, has no default checkpoint
-    "fusion": ('fusion', fusion_main, fusion_eval_main),
-    "lstm": ('lstm', lstm_model_main, lstm_eval_main),
-    "cnn": ('cnn', cnn_model_main, cnn_eval_main),
-
-    "no_finetune": ('no_finetune', None, no_finetune_eval_main)
-}
 
 
 if __name__ == '__main__':
@@ -57,30 +32,14 @@ if __name__ == '__main__':
                              'used to save the best model, if "metric", the reference metric (Accuracy weighted or '
                              'Hit) will be used to save the best model',
                         metavar='loss')
-    parser.add_argument('-m', '--model', type=str, default='bert', const='bert', nargs='?', required=True,
-                        choices=['t5', 'bert', 'nli_deberta', 'fusion', 'lstm', 'cnn', 'no_finetune'],
-                        help='t5 to finetune a t5 checkpoint on several tasks for Next Title Prediction, '
-                             'bert to finetune a bert checkpoint for Next Title Prediction, '
-                             'nli_deberta to finetune a deberta checkpoint for Next Title Prediction, '
-                             'multimodal to train a multimodal concatenation fusion architecture '
-                             'for Next Title Prediction',
-                        metavar='bert')
     parser.add_argument('-ck', '--checkpoint', type=str, default=None,
-                        help='Add checkpoint to use for train (e.g. google/flan-t5-small with t5 model)',
-                        metavar='None')
-    parser.add_argument('-k_c', '--k_clusters', type=int, default=None,
-                        help='If specified, it sets the number of clustered labels that will be considered '
-                             'as next possible titles instead of the original labels',
+                        help='Add checkpoint to use for train (e.g. google/flan-t5-small for t5 model)',
                         metavar='None')
     parser.add_argument('--log_wandb', action=argparse.BooleanOptionalAction, default=False,
                         help='Log pipeline information regarding data, train and eval on wandb')
     parser.add_argument('-n_ts', '--n_test_set', type=int, default=10,
                         help='Specify the number of test set to sample for evaluating the model trained',
                         metavar='10')
-    parser.add_argument('-p_s', '--prediction_supporter', type=str, default=None,
-                        help='Specify the name of the folder in the models directory containing the model to use as '
-                             'prediction supporter',
-                        metavar='None')
     parser.add_argument('-t5_t', '--t5_tasks', nargs="+", default=None,
                         choices=["directNTP", "directNTPSideInfo", "boolNTP"],
                         help='Specify which train task to use to fine tune NTPT55. If not specified, all possible tasks'
@@ -117,8 +76,6 @@ if __name__ == '__main__':
                         metavar='None')
     parser.add_argument('-clean_kdws', '--clean_stopwords_kwds', action=argparse.BooleanOptionalAction, default=False,
                         help='Specify whether to remove stopwords from the keywords column of the dataset or not')
-    parser.add_argument('-f_e_m', '--freeze_emb_model', action=argparse.BooleanOptionalAction, default=False,
-                        help='Used by LSTM encoder, define if the model used for embeddings should be frozen during train or not')
     parser.add_argument('-d', '--device', type=str, default="cuda:0",
                         help='Specify the device which should be used during the experiment',
                         metavar='cuda:0')
@@ -134,7 +91,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.checkpoint is None:
-        args.checkpoint = available_models_fns[args.model][0]
+        args.checkpoint = NTPT5.default_checkpoint
 
     if args.exp_name is None:
         # replace '/' with '_' to avoid creation of subdir (google/flan-t5-small -> google_flan-t5-small)
@@ -167,9 +124,6 @@ if __name__ == '__main__':
     # set fixed seed for experiment across all libraries used
     seed_everything(args.random_seed)
 
-    if args.model == "no_finetune":
-        print("'No fine tune' experiment chosen, only evaluation phase will be performed!")
-
     # DATA PIPELINE
     if 'data' in exp_config.pipeline_phases:
 
@@ -194,33 +148,28 @@ if __name__ == '__main__':
 
             data_main(exp_config)
 
-    # TRAIN PIPELINE: if "no_finetune" experiment, we skip this
-    if 'train' in exp_config.pipeline_phases and args.model != "no_finetune":
-        model = args.model
-        _, model_train_func, _ = available_models_fns[model]
+    with init_wandb(exp_config.exp_name, 'train', log=exp_config.log_wandb):
 
-        with init_wandb(exp_config.exp_name, 'train', log=exp_config.log_wandb):
+        if exp_config.log_wandb:
 
-            if exp_config.log_wandb:
+            wandb_dict = {
+                "n_epochs": exp_config.epochs,
+                "train_batch_size": exp_config.train_batch_size,
+                "eval_batch_size": exp_config.eval_batch_size,
+                "random_seed": exp_config.random_seed,
+                "model": exp_config.model,
+                "checkpoint": exp_config.checkpoint,
+                "device": exp_config.device
+            }
 
-                wandb_dict = {
-                    "n_epochs": exp_config.epochs,
-                    "train_batch_size": exp_config.train_batch_size,
-                    "eval_batch_size": exp_config.eval_batch_size,
-                    "random_seed": exp_config.random_seed,
-                    "model": exp_config.model,
-                    "checkpoint": exp_config.checkpoint,
-                    "device": exp_config.device
-                }
+            if args.model == "t5":
+                wandb_dict["t5_tasks"] = exp_config.t5_tasks
+                wandb_dict["t5_keyword_min_occ"] = exp_config.t5_keyword_min_occ
 
-                if args.model == "t5":
-                    wandb_dict["t5_tasks"] = exp_config.t5_tasks
-                    wandb_dict["t5_keyword_min_occ"] = exp_config.t5_keyword_min_occ
+            wandb.config.update(wandb_dict)
 
-                wandb.config.update(wandb_dict)
-
-            model_name = model_train_func(exp_config)  # each main will use ExperimentConfig instance parameters
-            model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
+        model_name = t5_main(exp_config)  # each main will use ExperimentConfig instance parameters
+        model_path = os.path.join(MODELS_DIR, exp_config.exp_name)
 
     # before evaluating, set fix seed so that even across
     # separate runs of train and eval results are reproducible
@@ -228,9 +177,6 @@ if __name__ == '__main__':
 
     # EVAL PIPELINE
     if 'eval' in exp_config.pipeline_phases:
-
-        model = args.model
-        _, _, model_eval_func = available_models_fns[model]
 
         with init_wandb(exp_config.exp_name, 'eval', log=exp_config.log_wandb):
 
@@ -242,4 +188,4 @@ if __name__ == '__main__':
                     "random_seed": exp_config.random_seed,
                 })
 
-            model_eval_func(exp_config)
+            t5_eval_main(exp_config)

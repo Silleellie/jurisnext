@@ -9,7 +9,7 @@ from transformers import T5ForConditionalGeneration, Adafactor, T5Config, Genera
 
 from src import ExperimentConfig
 from src.data.legal_dataset import LegalDataset
-from src.model.next_title_prediction.ntp_models.lm.t5.templates import DirectNTP, BoolNTP, Task, DirectNTPSideInfo
+from src.model.next_title_prediction.t5.templates import DirectNTP, BoolNTP, Task, DirectNTPSideInfo
 from src.model.next_title_prediction.ntp_trainer import NTPTrainer
 from src.model.sentence_encoders import SentenceEncoder, SentenceTransformerEncoder
 from src.model.next_title_prediction.ntp_models_abtract import NTPConfig, NTPModelHF
